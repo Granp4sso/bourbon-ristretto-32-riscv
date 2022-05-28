@@ -1,0 +1,54 @@
+[*]
+[*] GTKWave Analyzer v3.3.86 (w)1999-2017 BSI
+[*] Thu May 19 13:45:45 2022
+[*]
+[dumpfile] "/home/stefano/Desktop/PhD/PhD_Projects/Architectures/32-bit_RISCV_Core/trace.vcd"
+[dumpfile_mtime] "Thu May 19 13:44:57 2022"
+[dumpfile_size] 65704
+[savefile] "/home/stefano/Desktop/PhD/PhD_Projects/Architectures/32-bit_RISCV_Core/conf.gtkw"
+[timestart] 8
+[size] 1299 713
+[pos] -1 -1
+*-4.473289 230 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] TOP.
+[treeopen] TOP.beta_top.
+[treeopen] TOP.beta_top.dec_stage.
+[treeopen] TOP.beta_top.exe_stage.
+[sst_width] 223
+[signals_width] 238
+[sst_expanded] 1
+[sst_vpaned_height] 192
+@28
+TOP.alu_op_end_o
+TOP.clk_i
+@22
+TOP.instr_addr_o[31:0]
+TOP.instr_rdata_i[31:0]
+@28
+TOP.instr_ready_i
+TOP.instr_req_o
+TOP.instr_valid_i
+@22
+TOP.result_o[31:0]
+@28
+TOP.rstn_i
+TOP.beta_top.exe_stage.exe_cu.execu_exe_stage_busy_o
+TOP.beta_top.exe_stage.exe_cu.execu_shu_en_int
+TOP.beta_top.exe_stage.exe_cu.execu_shu_busy_i
+TOP.beta_top.exe_stage.exe_cu.shift_fsm[1:0]
+TOP.beta_top.exe_stage.exe_cu.shift_latch[1:0]
+TOP.beta_top.exe_stage.exe_cu.execu_shu_mode_int[1:0]
+TOP.beta_top.exe_stage.exe_cu.execu_shu_size_i[1:0]
+TOP.beta_top.exe_stage.exe_cu.execu_shu_en_int
+TOP.beta_top.exe_stage.exe_cu.execu_shu_busy_i
+TOP.beta_top.exe_stage.exe_cu.execu_dec_stage_busy_i
+@23
+TOP.beta_top.dec_stage.regfile.regfile_data_int(0)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(1)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(2)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(3)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(4)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(5)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(30)[31:0]
+[pattern_trace] 1
+[pattern_trace] 0
