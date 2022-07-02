@@ -1,12 +1,14 @@
 `include "pkg/beta_pkg.sv"
 
 /*
-03/05/2022
-Version 0.5
+28/06/2022
+Version 0.6
 
 	-Instruction fetch stage does support a very simple protocol similiar to the ibex one. No caches or prefetch buffer are supported yet
 	-Supporting dec_stage and exe_stage. No register wr-enable and no LSU support at the moment.
 	-No pipe support at the moment and no sequential logic. Almost everything is still combinatorial
+
+	-Integrating the pipeline control unit (still alpha)
 */
 
 
@@ -60,6 +62,8 @@ module beta_top import beta_pkg::*; #(
 	logic[4:0] 		dec_rd_addr_int;
 	logic[4:0] 		exe_rd_addr_int;
 	dec_control_word_t 	dec_control_word_int;
+	logic[DataWidth-1:0]	dec_next_pc_int;
+	logic			dec_new_instr_int;
 
 	
 	logic[DataWidth-1:0]	next_pc_int;
@@ -74,12 +78,34 @@ module beta_top import beta_pkg::*; #(
 	logic[DataWidth-1:0]	instr_addr_int;
 	logic[DataWidth-1:0]	instr_int;
 	logic 			instr_req_int;
+
+	/* Instruction fetch to Decode Pipe */
+
+	logic			pip0_new_instr_int;
+	logic[DataWidth-1:0]	pip0_instr_int;
+	logic[DataWidth-1:0]	pip0_next_pc_int;
+
+	/* Decode to Execution Pipe */
+
+	logic[11:0] 		pip1_offset12_int;
+	logic[19:0] 		pip1_offset20_int;
+	logic[XLEN-1:0] 	pip1_operand_a_int;
+	logic[XLEN-1:0] 	pip1_operand_b_int;
+	logic[4:0] 		pip1_rd_addr_int;
+	dec_control_word_t 	pip1_control_word_int;
+	logic[DataWidth-1:0]	pip1_next_pc_int;
+	logic			pip1_new_instr_int;
 	
 	//Inter stages sync signals
 
 	logic			if_stage_busy_int;
 	logic			dec_stage_busy_int;
 	logic			exe_stage_busy_int;
+
+	logic			pcu_pip0_stall_int;
+	logic			pcu_pip0_flush_int;
+	logic			pcu_pip1_stall_int;
+	logic			pcu_pip1_flush_int;
 
 	//System Reset Area
 
@@ -97,7 +123,7 @@ module beta_top import beta_pkg::*; #(
 	//Instantiating Instruction Fetch Stage
 
 	assign pc_en_int = reg_wr_en_int | fetch_en_int;	//The pc is written once everyody ended their task
-	assign fetch_en_int = ~if_stage_busy_int & ~dec_stage_busy_int & ~exe_stage_busy_int;
+	//assign fetch_en_int = ~if_stage_busy_int & ~dec_stage_busy_int & ~exe_stage_busy_int; commented because of the pcu
 
 	beta_if_stage #(
 		.DataWidth	(DataWidth),
@@ -125,12 +151,40 @@ module beta_top import beta_pkg::*; #(
 		.if_stage_busy_o(if_stage_busy_int)
 	);
 
+	beta_if_dec_pipe #(
+		.DataWidth	(DataWidth)
+	) pipe0 (
+		.clk_i(clk_i),
+		.rstn_i(rstn_i),
+
+		/* Input Fetch Stage signals */
+
+		.pip_instr_i(instr_int),
+		.pip_new_instr_i(new_instr_int),	
+
+		/* Output Decode Stage signals */
+
+		.pip_instr_o(pip0_instr_int),
+		.pip_new_instr_o(pip0_new_instr_int),
+
+		/* Others */
+
+		.pip_next_pc_i(instr_addr_int),
+		.pip_next_pc_o(pip0_next_pc_int),
+
+		/* Pipeline Control Unit signals*/
+
+		.pip_stall_i(pcu_pip0_stall_int),
+		.pip_flush_i(pcu_pip0_flush_int)
+	);
+
 	beta_dec_stage #() dec_stage (
 
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
-		.dec_instr_i(instr_int),
-		.dec_new_instr_i(new_instr_int),
+		.dec_next_pc_i(pip0_next_pc_int),
+		.dec_instr_i(pip0_instr_int),
+		.dec_new_instr_i(pip0_new_instr_int),
 		.dec_rd_wdata_i(result_int),
 		.dec_rd_addr_i(exe_rd_addr_int),
 		.dec_reg_wr_en_i(reg_wr_en_int),
@@ -140,9 +194,47 @@ module beta_top import beta_pkg::*; #(
 		.dec_operand_b_o(dec_operand_b_int),
 		.dec_rd_addr_o(dec_rd_addr_int),
 		.dec_control_word_o(dec_control_word_int),
+		.dec_next_pc_o(dec_next_pc_int),
+		.dec_new_instr_o(dec_new_instr_int),	//beta
 
 		.if_stage_busy_i(if_stage_busy_int),
 		.dec_stage_busy_o(dec_stage_busy_int)
+	);
+
+	beta_dec_exe_pipe #(
+		.DataWidth	(DataWidth)
+	) pipe1 (
+		.clk_i(clk_i),
+		.rstn_i(rstn_i),
+
+		/* Input Decode Stage signals */
+
+		.pip_offset12_i(dec_offset12_int),
+		.pip_offset20_i(dec_offset20_int),
+		.pip_operand_a_i(dec_operand_a_int),
+		.pip_operand_b_i(dec_operand_b_int),
+		.pip_rd_addr_i(dec_rd_addr_int),
+		.pip_control_word_i(dec_control_word_int),
+	
+		.pip_next_pc_i(dec_next_pc_int),
+		.pip_new_instr_i(dec_new_instr_int),	//beta
+
+		/* Output Execution Stage signals */
+
+		.pip_offset12_o(pip1_offset12_int),
+		.pip_offset20_o(pip1_offset20_int),
+		.pip_operand_a_o(pip1_operand_a_int),
+		.pip_operand_b_o(pip1_operand_b_int),
+		.pip_rd_addr_o(pip1_rd_addr_int),
+		.pip_control_word_o(pip1_control_word_int),
+
+		.pip_next_pc_o(pip1_next_pc_int),
+		.pip_new_instr_o(pip1_new_instr_int),	//beta
+
+		/* Pipeline Control Unit signals*/
+	
+		.pip_stall_i(pcu_pip1_stall_int),
+		.pip_flush_i(pcu_pip1_flush_int)
 	);
 
 	beta_exe_stage #(
@@ -151,15 +243,17 @@ module beta_top import beta_pkg::*; #(
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
 	
-		.exe_operand_a_i(dec_operand_a_int),
-		.exe_operand_b_i(dec_operand_b_int),
+		.exe_operand_a_i(pip1_operand_a_int),
+		.exe_operand_b_i(pip1_operand_b_int),
 
-		.exe_rd_addr_i(dec_rd_addr_int),
+		.exe_rd_addr_i(pip1_rd_addr_int),
 
-		.exe_pc_i(instr_addr_int),
-		.exe_offset12_i(dec_offset12_int),
-		.exe_offset20_i(dec_offset20_int),
-		.exe_control_word_i(dec_control_word_int[18:0]),
+		.exe_pc_i(pip1_next_pc_int),
+		.exe_offset12_i(pip1_offset12_int),
+		.exe_offset20_i(pip1_offset20_int),
+		.exe_control_word_i(pip1_control_word_int[18:0]),
+		
+		.exe_new_instr_i(pip1_new_instr_int),	//beta
 
 		.exe_alu_op_end_o(alu_op_end_int),
 		.exe_next_pc_o(next_pc_int),
@@ -183,6 +277,41 @@ module beta_top import beta_pkg::*; #(
 		.wdata_addr_o(wdata_addr_o),
 		.wdata_strb_o(wdata_strb_o),
 		.wdata_req_o(wdata_req_o)
+	);
+
+	//Pipeline control unit
+
+	/* At the moment the pipeline is still not implemented. The PCU is under test */
+
+	beta_pipeline_control_unit #(
+		.DataWidth(DataWidth),
+		.StageNum(3)
+	) pcu (
+		.clk_i(clk_i),
+		.rstn_i(rstn_i),
+
+		/* Fetch Stage Signals */
+
+		.pcu_ifs_busy_i(if_stage_busy_int),
+		.pcu_ifs_fetch_en_o(fetch_en_int),
+
+		/* Decode Stage signals */
+
+		.pcu_decs_busy_i(dec_stage_busy_int),
+
+		/* Execution Stage signals */
+
+		.pcu_exes_busy_i(exe_stage_busy_int),
+
+		/* Pipe if-to-dec signals */
+
+		.pcu_pip0_stall_o(pcu_pip0_stall_int), 
+		.pcu_pip0_flush_o(pcu_pip0_flush_int),
+
+		/* Pipe dec-to-exe signals */
+
+		.pcu_pip1_stall_o(pcu_pip1_stall_int),
+		.pcu_pip1_flush_o(pcu_pip1_flush_int)
 	);
 
 	assign result_o = result_int;

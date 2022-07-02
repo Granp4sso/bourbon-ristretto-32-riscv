@@ -1,13 +1,16 @@
 //`include "beta_def.sv"
 
 /*
-	Version 0.4
-	13/05/2022
+	Version 0.5
+	28/07/2022
 
 	This unit is meant to drive control signals coming from the decode stage to task domains/operative units in the exe_stage
 	In the future it could be split into several CUs belongs to a wider control domain
 
 	I have integrated the busy/sync/stall logic. At the moment it is very basic. 
+	I added the pipeline, hence the busy signals does not depend anymore on the decode stage busy signal. However, the stage still
+	never rises the busy signal in case of combinatorial calculations. (in the future I could change this).
+
 	Cu also support the event handler at the moment.
 
 	The state machine protocols could be compacted in one machine receiving a flag as a condion (depending on the requested sequential
@@ -25,6 +28,7 @@ module beta_exe_cu import beta_pkg::*; #(
 	input logic 		rstn_i,
 	
 	exe_control_word_t	execu_control_word_i,
+	//input logic		exe_new_instr_i,	//beta
 
 	/*Arithmetic & Logic Unit Port */
 	input logic 		execu_alu_op_end_i,
@@ -72,14 +76,14 @@ module beta_exe_cu import beta_pkg::*; #(
 	//Arithmetic & Logic Unit Protocol
 
 	always_comb begin: ALU_protocol
-		if(~execu_dec_stage_busy_i) begin
+		//if(~execu_dec_stage_busy_i) begin
 			execu_alu_op_int = {
 				execu_control_word_i.exe_alu_unsigned_n_en,
 				execu_control_word_i.exe_alu_add_en,
 				execu_control_word_i.exe_alu_sub_en,
 				execu_control_word_i.exe_alu_logic_en
 			};
-		end
+		//end
 		//else begin execu_alu_op_int = '0; end
 	end
 
@@ -87,20 +91,20 @@ module beta_exe_cu import beta_pkg::*; #(
 	//Branch & Jump Unit Protocol
 
 	always_comb begin: BJU_protocol
-		if(~execu_dec_stage_busy_i) begin
+		//if(~execu_dec_stage_busy_i) begin
 			execu_bju_op_int = {
 				execu_control_word_i.exe_condition_sel,
 				execu_control_word_i.exe_condition_neg,
 				execu_control_word_i.exe_bju_en
 			};
-		end
+		//end
 		//else begin execu_bju_op_int = '0; end
 	end
 	
 	//Selection Path Protocol
 	
 	always_comb begin : sel_protocol
-		if(~execu_dec_stage_busy_i) begin
+		//if(~execu_dec_stage_busy_i) begin
 			execu_result_sel_int = {
 				execu_control_word_i.exe_mem_op_en & ~execu_control_word_i.exe_mem_op, //Memory op enabled AND Load
 				execu_control_word_i.exe_add_pc_to_res_en, 	//AUIPC result
@@ -110,7 +114,7 @@ module beta_exe_cu import beta_pkg::*; #(
 			};
 		
 			execu_nextpc_sel_int = execu_bju_op_int[1] | execu_bju_op_int[0];
-		end
+		//end
 		/*else begin
 			execu_result_sel_int = '0;
 			execu_nextpc_sel_int O '0;
@@ -122,7 +126,7 @@ module beta_exe_cu import beta_pkg::*; #(
 	//Shift Unit Protocol
 	
 	logic [1:0] shift_fsm;
-	assign execu_shu_mode_int = (execu_dec_stage_busy_i) ? '0 : execu_control_word_i.exe_shu_shift_en;
+	assign execu_shu_mode_int = /*(execu_dec_stage_busy_i) ? '0 :*/ execu_control_word_i.exe_shu_shift_en;
 
 	always_ff @(posedge clk_i) begin : shu_protocol
 
@@ -130,7 +134,7 @@ module beta_exe_cu import beta_pkg::*; #(
 			execu_shu_en_int <= 1'b0;
 			shift_fsm <= '0;
 		end
-		else if( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 & shift_latch != 2'b10 & ~execu_dec_stage_busy_i) begin
+		else if( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 & shift_latch != 2'b10 /*& ~execu_dec_stage_busy_i*/) begin
 			case(shift_fsm)
 				2'b00: begin
 					if(execu_shu_en_int == 1'b0 | execu_shu_busy_i == 1'b0) begin
@@ -166,7 +170,7 @@ module beta_exe_cu import beta_pkg::*; #(
 			execu_lsu_en_int <= 1'b0;
 			lsu_fsm<= '0;
 		end
-		else if( execu_control_word_i.exe_mem_op_en == 1'b1 & lsu_latch != 2'b10 & ~execu_dec_stage_busy_i) begin
+		else if( execu_control_word_i.exe_mem_op_en == 1'b1 & lsu_latch != 2'b10 /*& ~execu_dec_stage_busy_i*/) begin
 			case(lsu_fsm)
 				2'b00: begin
 					if(execu_lsu_en_int == 1'b0 | execu_lsu_busy_i == 1'b0) begin
@@ -214,8 +218,8 @@ module beta_exe_cu import beta_pkg::*; #(
 	//Alu and BJU are totally combinatorial at the moment
 	assign execu_exe_stage_busy_int	= 
 		(~(execu_shu_mode_int == SHIFT_NONE | execu_shu_size_i <= 2'b01 | shift_latch == 2'b10)) | 	//Shift unit condition
-		(~(execu_control_word_i.exe_mem_op_en == 1'b0 | lsu_latch == 2'b10))				//LSU unit condition
-		& ~execu_dec_stage_busy_i;
+		(~(execu_control_word_i.exe_mem_op_en == 1'b0 | lsu_latch == 2'b10))	;			//LSU unit condition
+		//& ~execu_dec_stage_busy_i; Not used anymore because of pipelining
 
 	assign execu_alu_op_o = execu_alu_op_int;
 	assign execu_bju_op_o = execu_bju_op_int;

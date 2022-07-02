@@ -132,48 +132,57 @@ module beta_decoder #()
 				end
 			OPCODE_REG/4	:
 				begin
+					funct3_mask_bit_int = 1'b0;
 					funct7_mask_bit_int = 1;
 					invalid_opcode_int = 0;
 				end
 			OPCODE_JAL/4	:
 				begin
+					funct3_mask_bit_int = 1'b1;
 					funct7_mask_bit_int = 0;
 					invalid_opcode_int = 0;
 				end
 			OPCODE_JALR/4	:
 				begin
+					funct3_mask_bit_int = 1'b1;
 					funct7_mask_bit_int = 0;
 					invalid_opcode_int = 0;
 				end
 			OPCODE_BRANCH/4	:
 				begin
+					funct3_mask_bit_int = 1'b0;
 					funct7_mask_bit_int = 0;
 					invalid_opcode_int = 0;
 				end
 			OPCODE_LOAD/4	:
 				begin;
+					funct3_mask_bit_int = 1'b0;
 					funct7_mask_bit_int = 0;
 					invalid_opcode_int = 0;
 				end
 			OPCODE_STORE/4	:
 				begin
+					funct3_mask_bit_int = 1'b0;
 					funct7_mask_bit_int = 0;
 					invalid_opcode_int = 0;
 				end
 
 			OPCODE_MISC_MEM/4	:
 				begin
+					funct3_mask_bit_int = 1'b0;
 					funct7_mask_bit_int = 0;
 					invalid_opcode_int = 0;
 				end
 			OPCODE_SYSTEM/4	:
 				begin
+					funct3_mask_bit_int = 1'b0;
 					funct7_mask_bit_int = 0;
 					invalid_opcode_int = 0;
 				end
 
 			default		:
 				begin
+					funct3_mask_bit_int = 1'b0;
 					funct7_mask_bit_int = 0;
 					invalid_opcode_int = 1;
 				end

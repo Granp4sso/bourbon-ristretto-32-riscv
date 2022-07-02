@@ -82,8 +82,6 @@ module beta_if_stage import beta_pkg::*; #(
 	logic			new_instr_int;
 	logic 			instr_req_int;
 
-	assign new_instr_int = if_instr_valid_i; //In the future this signal will depend also oin memory exceptions.
-
 	/*Program Counter Process. In the future I could dedicate an entire unit for it*/
 
 	always_ff@(posedge clk_i) begin: PC_process
@@ -111,6 +109,7 @@ module beta_if_stage import beta_pkg::*; #(
 		.if_fu_instr_req_o	(instr_req_int),
 
 		.if_fu_instr_o		(instr_int),
+		.if_fu_new_instr_o	(new_instr_int),
 		.if_fu_stage_busy_o	(if_stage_busy_int)
 
 	);

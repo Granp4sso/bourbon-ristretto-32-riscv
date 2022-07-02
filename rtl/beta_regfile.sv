@@ -53,7 +53,7 @@ module beta_regfile import beta_pkg::*; #(
 				regfile_data_int[i] <= '0;
 		end
 		else if( wr_en_i == 1'b1 ) begin
-			regfile_data_int[rd_addr_i] <= rd_wdata_i;
+			if(|rd_addr_i == 1'b1) regfile_data_int[rd_addr_i] <= rd_wdata_i; //Do not write on reg 0
 		end
 		
 	end 

@@ -62,6 +62,7 @@
 	The wr_en signal must be high for exactly 1 clock cycle, so that an exe requested write will occur one time.
 	That's why we need the new instruction signal and latch that event. in this way when we receive a high wr_en signal,
 	the latch is lowered and the write executed. Untill a new instruction is fetched, no new write will be performed.
+	The signal of "new instruction" is now supposed to be forwarded to all further stages.
 
 */
 
@@ -76,6 +77,7 @@ module beta_dec_stage import beta_pkg::*; #(
 
 	input logic 			clk_i,
 	input logic 			rstn_i,
+	input logic[DataWidth-1:0]	dec_next_pc_i,
 	input logic[DataWidth-1:0] 	dec_instr_i,
 	input logic			dec_new_instr_i,
 
@@ -90,6 +92,8 @@ module beta_dec_stage import beta_pkg::*; #(
 	output logic[DataWidth-1:0] 	dec_operand_b_o,
 	output logic[4:0] 		dec_rd_addr_o,
 	output dec_control_word_t 	dec_control_word_o,
+	output logic[DataWidth-1:0]	dec_next_pc_o,
+	output logic 			dec_new_instr_o,	//beta
 
 	/*Intra stage sync*/
 	input logic			if_stage_busy_i,
@@ -112,6 +116,7 @@ module beta_dec_stage import beta_pkg::*; #(
 
 	logic			rd_wr_en_int;
 	logic 			new_instruction_latch;
+	logic 			dec_new_instr_int;	//beta
 	
 	dec_control_word_t 	control_word_int;
 
@@ -122,9 +127,9 @@ module beta_dec_stage import beta_pkg::*; #(
 	assign dec_operand_a_o = operand_a_int;
 	assign dec_operand_b_o = operand_b_int;
 
-	/*For the moment the decode stage is purely combinatorial, hence no specific check on busy signals is required*/
+	/*For the moment the decode stage is purely combinatorial, hence the unit is busy when a new instruction is decoded (1 clk cycle)*/
 
-	assign dec_stage_busy_o = if_stage_busy_i;
+	assign dec_stage_busy_o = new_instruction_latch;
 	assign rd_wr_en_int = new_instruction_latch & dec_reg_wr_en_i;
 
 	/*New instruction latch process*/
@@ -140,6 +145,12 @@ module beta_dec_stage import beta_pkg::*; #(
 			new_instruction_latch <= 1'b0;
 		end
 	end
+	
+	/* The new instruction signal must be forwarded to the exe stage as well, when the decode stage produces its data ofc. 
+	   But for now, the decode stage always take 1 clkc cycle */
+	   
+	assign dec_new_instr_int = dec_new_instr_i;
+	
 	
 	/*Instantiation*/
 
@@ -211,6 +222,11 @@ module beta_dec_stage import beta_pkg::*; #(
 			default : operand_b_int = '0;
 		endcase;
 	end
+
+	//as long as the Decode stage is purely combinatorial, the next_pc signal can be forwarded without any delay
+
+	assign dec_next_pc_o = dec_next_pc_i;
+	assign dec_new_instr_o = dec_new_instr_int;
 
 
 endmodule;

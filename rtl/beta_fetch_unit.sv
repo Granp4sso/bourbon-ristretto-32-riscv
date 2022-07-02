@@ -56,12 +56,14 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 	output logic 			if_fu_instr_req_o,
 
 	output logic[DataWidth-1:0]	if_fu_instr_o,
+	output logic			if_fu_new_instr_o,
 	output logic			if_fu_stage_busy_o
 );
 
 	logic 				if_stage_busy_int;
 	logic 				instr_req_int;
 	logic[DataWidth-1:0]		instr_int;
+	logic				new_instr_int;
 
 	logic[imem_fsm_bsize-1:0] 	imem_state_int;
 
@@ -69,6 +71,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 		if(rstn_i == 1'b0) begin
 			instr_int <= '0;
 			if_stage_busy_int <= 1'b0;
+			new_instr_int <= 1'b0;
 			imem_state_int <= IMEM_IDLE;
 		end
 		else begin
@@ -80,6 +83,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 					instr_req_int <= 1'b1;
 					imem_state_int <= IMEM_WRDY;
 				end
+				new_instr_int <= 1'b0;
 			end
 
 			IMEM_WRDY: begin
@@ -93,10 +97,11 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 				if(if_fu_instr_valid_i) begin
 					if_stage_busy_int <= 1'b0;
 					instr_int <= if_fu_instr_rdata_i;
+					new_instr_int <= 1'b1;
 					imem_state_int <= IMEM_IDLE;		
 				end
 			end
-			default: imem_state_int <= IMEM_IDLE;
+			default: imem_state_int <= IMEM_IDLE; 
 			endcase
 			
 		end
@@ -105,6 +110,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 	assign if_fu_instr_o = instr_int;
 	assign if_fu_instr_req_o = instr_req_int;
 	assign if_fu_stage_busy_o = if_stage_busy_int;
+	assign if_fu_new_instr_o = new_instr_int;
 
 endmodule;
 

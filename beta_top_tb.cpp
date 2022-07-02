@@ -9,10 +9,15 @@
 #include "verilated_vcd_c.h"
 
 #define CLK_NS 10
-#define CYCLES 700
+#define CYCLES 100
+
+short int GLOBAL_HALT = 0;
+unsigned int MEM_FOOTPRINT = 0;
 
 void tick(int tickcount, Vbeta_top *tb, VerilatedVcdC *tfp);
 void trace_init(Vbeta_top *tb, VerilatedVcdC * tfp);
+
+void init_imem(unsigned int * Memory, char * path);
 void imem_protocol(unsigned  int * Memory, int * imem_en, int * imem_addr, Vbeta_top *tb);
 void dmem_protocol(unsigned  int * Memory, int * dmem_en, int * dmem_addr, int * dmem_strb, int * op, Vbeta_top *tb);
 
@@ -32,7 +37,7 @@ int main(int argc, char **argv){
 	//Init core
 
 	int i = 0;
-	unsigned int imem[150] = {
+	unsigned int testmem[150] = {
 		0x00000013, 	//NOP
 		0x01A00313, 	//ADDI x6,x0,0x01a OK
 		0x01034193, 	//XORI x3,x6,0x010 OK
@@ -126,52 +131,31 @@ int main(int argc, char **argv){
 
 	};
 
-	unsigned int factorial_imem[150] = {
-		0x00000013, 	//NOP
-		0x00300093,	//first 3 bytes are the argument
-		0xFFF08113,
-		0x001001B3,
-		0x00100F13,
-		0x00100233,
-		0xFFE20213,
-		0xFFF10113,
-		0x000102B3,
-		0x001181B3,
-		0x41E282B3,
-		0xFE029CE3,
-		0x41E10133,
-		0x41E20233,
-		0x003000B3,
-		0xFE0212E3,	//Il registro x3 contiene il risultato finale
-
-		0x00302023,
-		0x00002303,
-		0x00435393,
-		0x00702223,
-		0x00402403,	//fine load,store e srli
-
-	};
+	unsigned int imem[1500]; //6 KBytes
 
 	int imem_en = 0;
 	int imem_addr = 0;
 
-	unsigned int dmem[150] = {
+	unsigned int dmem[2500] = {
 		0x12345678,
 	};
 	int dmem_en = 0;
 	int dmem_addr = 0;
 	int dmem_strb = 0;
 	int dmem_op = 0;
-	
-	while(i < CYCLES){
+
+	printf("%s\n",argv[1]);
+	init_imem(imem,argv[1]);
+
+	while(i < CYCLES && GLOBAL_HALT == 0){
 
 		printf("Cycle %d : ",i);
+		if(tb->instr_addr_o == 0xffffffff) GLOBAL_HALT = 1; //every code must end with a jump to 0xffffffff
 
-		imem_protocol(factorial_imem,&imem_en,&imem_addr,tb);
+		imem_protocol(imem,&imem_en,&imem_addr,tb);
 		dmem_protocol(dmem,&dmem_en,&dmem_addr,&dmem_strb, &dmem_op, tb);
 
-		(i == 0) ? tb->rstn_i = 0 : tb->rstn_i = 1; //N Reset for first clk cycle
-		//At the moment every RV32I I-type is working except for SLTI and SLTIU
+		(i == 0) ? tb->rstn_i = 0 : tb->rstn_i = 1;
 
 		tick(++tickcount,tb,tfp);
 		i++;
@@ -180,9 +164,45 @@ int main(int argc, char **argv){
 	}
 
 	//END: Logic		
+
+	printf("Report:\n");
+	printf("Clock Cycles: %u\nMemory Footprint: %u Bytes\n",i-14,MEM_FOOTPRINT);
 	
 	delete tb;
 	delete tfp;
+
+}
+
+void init_imem(unsigned int * Memory, char * path){
+
+	//FILE *binfile  = fopen("test_programs/reverse_vector/code.bin", "r");
+	FILE *binfile  = fopen("testcode.bin", "r");
+	// test for files not existing. 
+
+	Memory[0] = 0x00000013; //NOP
+
+        if (binfile == NULL) 
+        {   
+		printf("Error! Could not open file\n"); 
+		exit(-1); // must include stdlib.h 
+        } 
+	printf("File opened\n");
+
+	unsigned int temp;
+	short int i = 1;
+
+	while(fscanf(binfile, "%08x", &temp ) == 1){
+		Memory[i] = temp;
+		//printf("0x%08x\n",Memory[i]);
+		i++;
+	}
+	
+	//Memory[i] = 0xffffffff; //CUSTOM HALT
+
+	printf("Loaded program size: %u Bytes\n", 4*(i-1));
+	MEM_FOOTPRINT = 4*(i-1);
+           
+	
 
 }
 
@@ -207,6 +227,8 @@ void imem_protocol(unsigned int * Memory, int * imem_en, int * imem_addr, Vbeta_
 			tb->instr_rdata_i = Memory[*imem_addr/4];
 			printf("Richiesta istruzione 0x%08x, indirizzo 0x%08x",Memory[*imem_addr/4],*imem_addr);
 			*imem_en = 0;
+
+			
 		}
 		break;
 	}

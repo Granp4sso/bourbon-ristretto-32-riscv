@@ -1,4 +1,4 @@
-//`include "beta_def.sv"
+`include "pkg/beta_exe_stage_pkg.sv"
 
 /*
 13/05/2022
@@ -18,6 +18,8 @@ module beta_exe_stage import beta_pkg::*; #(
 	input logic 			clk_i,
 	input logic 			rstn_i,
 	
+	input logic			exe_new_instr_i,	//beta
+	
 	input logic[DataWidth-1:0] 	exe_operand_a_i,
 	input logic[DataWidth-1:0]	exe_operand_b_i,
 
@@ -33,6 +35,8 @@ module beta_exe_stage import beta_pkg::*; #(
 	output logic[DataWidth-1:0]	exe_result_o,
 	output logic[4:0] 		exe_rd_addr_o,
 	output logic			exe_reg_wr_en_o,
+	
+
 
 	//Inter Stages sync port
 
@@ -102,31 +106,31 @@ module beta_exe_stage import beta_pkg::*; #(
 	
 		.execu_control_word_i(exe_control_word_i),
 
-	/*Arithmetic & Logic Unit Port */
+		/*Arithmetic & Logic Unit Port */
 		.execu_alu_op_end_i(exe_alu_op_end_int), //Unused atm
 		.execu_alu_op_o(alu_op_int),
 
-	/*Shift Unit Port*/
+		/*Shift Unit Port*/
 		.execu_shu_size_i(shu_size_int), //00 No Shift, 01 One Shift, 10/11 Multiple shifts
 		.execu_shu_busy_i(shu_busy_int),
 		.execu_shu_mode_o(shu_mode_int),
 		.execu_shu_en_o(shu_en_int),
 	
 
-	/*Branch & Jump Unit Port*/
+		/*Branch & Jump Unit Port*/
 		.execu_bju_op_o(bju_op_int),
 
-	/*Load & Store Unit Port*/
+		/*Load & Store Unit Port*/
 		.execu_lsu_busy_i(lsu_busy_int),
 		.execu_lsu_op_size_o(lsu_op_size_int),
 		.execu_lsu_op_o(lsu_op_int),
 		.execu_lsu_en_o(lsu_en_int),
 
-	/*Selection Path Port*/
+		/*Selection Path Port*/
 		.execu_result_sel_o(result_mux_sel_int),
 		.execu_nextpc_sel_o(nextpc_mux_sel_int),
 
-	/*Busy/Synch signals port*/
+		/*Busy/Synch signals port*/
 		.execu_dec_stage_busy_i(dec_stage_busy_i),
 		.execu_exe_stage_busy_o(exe_stage_busy_int)
 
@@ -245,6 +249,7 @@ module beta_exe_stage import beta_pkg::*; #(
 			1'b1: exe_next_pc_int = bju_next_pc_int;
 		endcase;
 	end
+	
 
 	assign exe_alu_op_end_o = exe_alu_op_end_int;
 	assign exe_next_pc_o = exe_next_pc_int;
@@ -252,6 +257,8 @@ module beta_exe_stage import beta_pkg::*; #(
 	assign exe_reg_wr_en_o = exe_control_word_i.exe_reg_wr_en & exe_alu_op_end_int & ~exe_stage_busy_int; //Atm the alu_op_end is always 1
 	assign exe_rd_addr_o = exe_rd_addr_int;
 
-	assign exe_stage_busy_o = (dec_stage_busy_i) ? 1'b1 : exe_stage_busy_int;
+	//assign exe_stage_busy_o = (dec_stage_busy_i) ? 1'b1 : exe_stage_busy_int; commented to test the pcu
+	assign exe_stage_busy_o = exe_stage_busy_int;
+
 
 endmodule;
