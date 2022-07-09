@@ -1,8 +1,8 @@
 //`include "beta_def.sv"
 
 /*
-	Version 0.6
-	4/07/2022
+	Version 0.7
+	9/07/2022
 
 	This unit is meant to drive control signals coming from the decode stage to task domains/operative units in the exe_stage
 	In the future it could be split into several CUs belongs to a wider control domain
@@ -137,7 +137,7 @@ module beta_exe_cu import beta_pkg::*; #(
 			execu_shu_en_int <= 1'b0;
 			shift_fsm <= '0;
 		end
-		else if( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 & shift_latch != 2'b11 ) begin
+		else if( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 & ~shift_latch[1] ) begin	//Shift latch must be < 0b10 
 			case(shift_fsm)
 				2'b00: begin
 					if((execu_shu_en_int == 1'b0 | execu_shu_busy_i == 1'b0) &  new_instr_latch)begin
@@ -173,7 +173,7 @@ module beta_exe_cu import beta_pkg::*; #(
 			execu_lsu_en_int <= 1'b0;
 			lsu_fsm<= '0;
 		end
-		else if( execu_control_word_i.exe_mem_op_en == 1'b1 & lsu_latch != 2'b11 ) begin
+		else if( execu_control_word_i.exe_mem_op_en == 1'b1 & ~lsu_latch[1] ) begin	//LSU latch must be < 0b10 
 			case(lsu_fsm)
 				2'b00: begin
 					if((execu_lsu_en_int == 1'b0 | execu_lsu_busy_i == 1'b0)  &  new_instr_latch) begin
@@ -208,13 +208,15 @@ module beta_exe_cu import beta_pkg::*; #(
 	logic 		sc_write_latch;		//Singlecycle write latch
 	logic 		new_instr_latch;	
 	logic 		new_instr_pend_latch;
+	logic		event_flag;		//This flag notifies that a seq. operation has completed (i.e. an event occurred)
 	
-	assign multi_cycle_op = ( execu_shu_mode_int != SHIFT_NONE ) | execu_control_word_i.exe_mem_op_en;	//This signal will depend on the triggering event signals
+	assign multi_cycle_op = ( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 ) | execu_control_word_i.exe_mem_op_en;	//This signal will depend on the triggering event signals
 	assign execu_reg_wr_en_int = mc_write_latch | sc_write_latch ;
+	assign event_flag = ( shift_latch == 2'b10 ) | 	( lsu_latch == 2'b10 )	;				
 
 	always_ff@(posedge clk_i) begin: latch_events
 		if(rstn_i == 1'b0) begin
-			event_latch <= 2'b00;
+			//event_latch <= 2'b00;
 			shift_latch <= 2'b00;
 			lsu_latch <= 2'b00;
 			
@@ -226,20 +228,20 @@ module beta_exe_cu import beta_pkg::*; #(
 		end
 		else begin
 			// Shift Unit Event Handler
-			if( execu_shu_busy_i == 1'b1 ) begin event_latch <= 2'b01; shift_latch <= 2'b01;  end 					//Record start op
-			else if( shift_latch == 2'b01 & execu_shu_busy_i == 1'b0) begin shift_latch <= 2'b10; event_latch <= 2'b10; end 	//Record end op
-			else if( shift_latch == 2'b10 ) begin shift_latch <= 2'b11; event_latch <= 2'b11; end					//Write back
-			else if( shift_latch == 2'b11 ) begin shift_latch <= 2'b00; event_latch <= 2'b00; end			 		//Reset
+			if( execu_shu_busy_i == 1'b1 ) begin /*event_latch <= 2'b01;*/ shift_latch <= 2'b01;  end 				//Record start op
+			else if( shift_latch == 2'b01 & execu_shu_busy_i == 1'b0) begin shift_latch <= 2'b10; /*event_latch <= 2'b10;*/ end 	//Record end op
+			else if( shift_latch == 2'b10 ) begin shift_latch <= 2'b11; /*event_latch <= 2'b11;*/ end				//Write back
+			else if( shift_latch == 2'b11 ) begin shift_latch <= 2'b00; /*event_latch <= 2'b00;*/ end			 	//Reset
 
-			// Load & Store unit Event Handler (OLD)
-			if( execu_lsu_busy_i == 1'b1 ) begin event_latch <= 2'b01; lsu_latch <= 2'b01;  end 					//Record start op
-			else if( lsu_latch == 2'b01 & execu_lsu_busy_i == 1'b0) begin lsu_latch <= 2'b10; event_latch <= 2'b10; end		//Record end op
-			else if( lsu_latch == 2'b10 ) begin lsu_latch <= 2'b11; event_latch <= 2'b11; end					//Write back
-			else if( lsu_latch == 2'b11 ) begin lsu_latch <= 2'b00; event_latch <= 2'b00; end 					//Reset
+			// Load & Store unit Event Handler 
+			if( execu_lsu_busy_i == 1'b1 ) begin /*event_latch <= 2'b01;*/ lsu_latch <= 2'b01;  end 				//Record start op
+			else if( lsu_latch == 2'b01 & execu_lsu_busy_i == 1'b0) begin lsu_latch <= 2'b10; /*event_latch <= 2'b10;*/ end		//Record end op
+			else if( lsu_latch == 2'b10 ) begin lsu_latch <= 2'b11; /*event_latch <= 2'b11;*/ end					//Write back
+			else if( lsu_latch == 2'b11 ) begin lsu_latch <= 2'b00; /*event_latch <= 2'b00;*/ end 					//Reset
 			
 			// Write signal Event Handler
 			if( multi_cycle_op ) begin 
-				if( event_latch == 2'b10 & execu_control_word_i.exe_reg_wr_en ) begin mc_write_latch <= 1'b1; end
+				if( /*event_latch == 2'b10*/ event_flag & execu_control_word_i.exe_reg_wr_en ) begin mc_write_latch <= 1'b1; end
 				else begin mc_write_latch <= 1'b0; end
 			end
 			else begin

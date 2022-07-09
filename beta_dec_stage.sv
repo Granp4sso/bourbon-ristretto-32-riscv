@@ -96,8 +96,14 @@ module beta_dec_stage import beta_pkg::*; #(
 	output logic 			dec_new_instr_o,	//beta
 
 	/*Intra stage sync*/
+	output logic[4:0]		dec_rsrc1_addr_o,
+	output logic[4:0]		dec_rsrc2_addr_o,
 	input logic			if_stage_busy_i,
-	output logic			dec_stage_busy_o
+	output logic			dec_stage_busy_o,
+	
+	/*Execution forward signals*/
+	input logic 			dec_forward_en_i,
+	input logic[1:0] 		dec_forward_src_i
 	
 );
 
@@ -124,8 +130,8 @@ module beta_dec_stage import beta_pkg::*; #(
 	assign dec_offset20_o = imm20_int;
 	assign dec_rd_addr_o = rd_addr_int;
 	assign dec_control_word_o = control_word_int;
-	assign dec_operand_a_o = operand_a_int;
-	assign dec_operand_b_o = operand_b_int;
+	assign dec_operand_a_o = ( dec_forward_en_i & dec_forward_src_i[0] ) ? dec_rd_wdata_i : operand_a_int ;
+	assign dec_operand_b_o = ( dec_forward_en_i & dec_forward_src_i[1] ) ? dec_rd_wdata_i : operand_b_int ;
 
 	/*For the moment the decode stage is purely combinatorial, hence the unit is busy when a new instruction is decoded (1 clk cycle)*/
 
@@ -228,6 +234,8 @@ module beta_dec_stage import beta_pkg::*; #(
 
 	assign dec_next_pc_o = dec_next_pc_i;
 	assign dec_new_instr_o = dec_new_instr_int;
+	assign dec_rsrc1_addr_o = rs1_addr_int;
+	assign dec_rsrc2_addr_o = rs2_addr_int;
 
 
 endmodule;
