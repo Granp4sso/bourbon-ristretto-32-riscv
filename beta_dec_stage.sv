@@ -103,7 +103,8 @@ module beta_dec_stage import beta_pkg::*; #(
 	
 	/*Execution forward signals*/
 	input logic 			dec_forward_en_i,
-	input logic[1:0] 		dec_forward_src_i
+	input logic[1:0] 		dec_forward_src_i,
+	output logic[4:0]		dec_shadow_op_b_o		//This signal is always the decoded signal, and not the forwarded one
 	
 );
 
@@ -132,14 +133,15 @@ module beta_dec_stage import beta_pkg::*; #(
 	assign dec_control_word_o = control_word_int;
 	assign dec_operand_a_o = ( dec_forward_en_i & dec_forward_src_i[0] ) ? dec_rd_wdata_i : operand_a_int ;
 	assign dec_operand_b_o = ( dec_forward_en_i & dec_forward_src_i[1] ) ? dec_rd_wdata_i : operand_b_int ;
-
+	assign dec_shadow_op_b_o = operand_b_int[4:0] ;
+	
 	/*For the moment the decode stage is purely combinatorial, hence the unit is busy when a new instruction is decoded (1 clk cycle)*/
 
 	assign dec_stage_busy_o = new_instruction_latch;
 	//assign rd_wr_en_int = new_instruction_latch & dec_reg_wr_en_i;
 	assign rd_wr_en_int = dec_reg_wr_en_i;
 
-	/*New instruction latch process*/
+	/*New instruction latch process : count one clock cycle*/
 	
 	always_ff@(posedge clk_i) begin: new_instruction_latch_proc
 		if(rstn_i == 1'b0) begin
@@ -148,7 +150,7 @@ module beta_dec_stage import beta_pkg::*; #(
 		else if(dec_new_instr_i) begin
 			new_instruction_latch <= 1'b1;
 		end
-		else if(dec_reg_wr_en_i & new_instruction_latch) begin
+		else if(new_instruction_latch) begin
 			new_instruction_latch <= 1'b0;
 		end
 	end
@@ -217,7 +219,7 @@ module beta_dec_stage import beta_pkg::*; #(
 	//Multiplexer for operand B selection & Extension
 
 	always_comb begin : Mux_exe_stage_opB_selection
-
+	
 		case( control_word_int.dec_src2_select )
 			2'b00 : operand_b_int = rs2_data_int;
 			2'b01 : begin

@@ -66,7 +66,7 @@ module beta_top import beta_pkg::*; #(
 	logic			dec_new_instr_int;
 	logic[4:0]		dec_rsrc1_addr_int;
 	logic[4:0]		dec_rsrc2_addr_int;
-
+	logic			exe_branch_taken_int;
 	
 	logic[DataWidth-1:0]	next_pc_int;
 	logic			alu_op_end_int;
@@ -127,6 +127,9 @@ module beta_top import beta_pkg::*; #(
 	assign pc_en_int = reg_wr_en_int | fetch_en_int;	//The pc is written once everyody ended their task
 	//assign fetch_en_int = ~if_stage_busy_int & ~dec_stage_busy_int & ~exe_stage_busy_int; commented because of the pcu
 
+
+	logic if_ctrl_hazard_int = (pcu_ctrl_hazard_flag_int[0]) ? (pcu_ctrl_hazard_flag_int[1] | (~pcu_ctrl_hazard_flag_int[1] & exe_branch_taken_int)) : 1'b0;
+	
 	beta_if_stage #(
 		.DataWidth	(DataWidth),
 		.PrefetchBuffer	(0),
@@ -149,7 +152,7 @@ module beta_top import beta_pkg::*; #(
 		.if_curr_pc_o(instr_addr_int),
 		.if_instr_o(instr_int),
 		.if_new_instr_o(new_instr_int),
-		.if_ctrl_hazard_flag_i(pcu_ctrl_hazard_flag_int),
+		.if_ctrl_hazard_flag_i(pcu_ctrl_hazard_flag_int[0] & (pcu_ctrl_hazard_flag_int[1] | exe_branch_taken_int)),
 		
 		.if_stage_busy_o(if_stage_busy_int)
 	);
@@ -206,7 +209,8 @@ module beta_top import beta_pkg::*; #(
 		.dec_stage_busy_o(dec_stage_busy_int),
 		
 		.dec_forward_en_i(data_hazard_flag_int),
-		.dec_forward_src_i(data_hazard_src_int)
+		.dec_forward_src_i(data_hazard_src_int),
+		.dec_shadow_op_b_o(dec_shadow_op_b_int)
 	);
 
 	beta_dec_exe_pipe #(
@@ -272,6 +276,7 @@ module beta_top import beta_pkg::*; #(
 
 		.dec_stage_busy_i(dec_stage_busy_int),
 		.exe_stage_busy_o(exe_stage_busy_int),
+		.exe_branch_taken_o(exe_branch_taken_int),
 
 		.rdata_ready_i(rdata_ready_i),
 		.rdata_valid_i(rdata_valid_i),
@@ -294,15 +299,27 @@ module beta_top import beta_pkg::*; #(
 	logic[1:0] pcu_r_op_int = dec_control_word_int.src_reg_used;
 	logic pcu_exe_wreq_int = pip1_control_word_int.exe_reg_wr_en;
 	logic[4:0] pcu_exe_rd_int = exe_rd_addr_int;
+	logic[4:0] dec_shadow_op_b_int;
 	
 	/*
 		FOR FUTURE DEVELOPMENTS: atm multicycle is computed in the exe_cu as well. Instead, compute it only in the dec stage and append it to the control world.
 	*/
 	
-	logic pcu_exe_multi_cycle_int = ( pip1_control_word_int.exe_shu_shift_en != SHIFT_NONE & {&pip1_operand_b_int[4:1],pip1_operand_b_int[0]} >= 2'b10 ) | 
-					( pip1_control_word_int.exe_mem_op_en );	
-	logic pcu_dec_multi_cycle_int = ( dec_control_word_int.exe_shu_shift_en != SHIFT_NONE & {&dec_operand_b_int[4:1],dec_operand_b_int[0]} >= 2'b10 ) |
-					( dec_control_word_int.exe_mem_op_en );	
+	logic pcu_dec_shift_cond_int = dec_control_word_int.exe_shu_shift_en != SHIFT_NONE;
+	logic pcu_dec_shift_size_int = dec_shadow_op_b_int >= 5'h02;
+	logic pcu_dec_mem_cond_int = dec_control_word_int.exe_mem_op_en;
+	logic pcu_dec_multi_cycle_int = (pcu_dec_shift_cond_int & pcu_dec_shift_size_int) | pcu_dec_mem_cond_int; 
+	
+	logic pcu_exe_shift_cond_int = pip1_control_word_int.exe_shu_shift_en != SHIFT_NONE;
+	logic pcu_exe_shift_size_int = pip1_operand_b_int[4:0] >= 5'h02;
+	logic pcu_exe_mem_cond_int = pip1_control_word_int.exe_mem_op_en;
+	logic pcu_exe_multi_cycle_int = (pcu_exe_shift_cond_int & pcu_exe_shift_size_int) | pcu_exe_mem_cond_int; 
+	
+	
+	//logic pcu_exe_multi_cycle_int = ( pip1_control_word_int.exe_shu_shift_en != SHIFT_NONE & ( pip1_operand_b_int[4:0] >= 5'h02 ) /*{|pip1_operand_b_int[4:1],pip1_operand_b_int[0]} >= 2'b10*/ ) | 
+					//( pip1_control_word_int.exe_mem_op_en );
+	/*logic pcu_dec_multi_cycle_int = ( dec_control_word_int.exe_shu_shift_en != SHIFT_NONE & ( dec_operand_b_int[4:0] >= 5'h02 ) ) |
+					( dec_control_word_int.exe_mem_op_en );	*/
 					
 	logic data_hazard_flag_int;
 	logic[1:0] data_hazard_src_int;
@@ -312,7 +329,7 @@ module beta_top import beta_pkg::*; #(
 	/* Control Hazard Signals begin*/
 	
 	logic[1:0] pcu_exe_bju_en_int =  pip1_control_word_int.exe_bju_en;
-	logic pcu_ctrl_hazard_flag_int;
+	logic[1:0] pcu_ctrl_hazard_flag_int;
 	
 	/* Control Hazard Signals end*/
 

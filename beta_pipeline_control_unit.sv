@@ -76,7 +76,7 @@ module beta_pipeline_control_unit import beta_pkg::*; #(
 	/* Control Hazard Signals */
 	
 	input logic[1:0]		pcu_exe_bju_en_i,
-	output logic			pcu_ctrl_hazard_flag_o
+	output logic[1:0]		pcu_ctrl_hazard_flag_o
 	
 );
 
@@ -87,34 +87,27 @@ module beta_pipeline_control_unit import beta_pkg::*; #(
 	logic			pcu_pip1_flush_int;
 
 	logic			ifs_triggered_int;
-
+	logic fetch_sync_latch;
+	
 	always_ff@(posedge clk_i) begin : pipeline_controller
-
+	
+		
 		if( rstn_i == 1'b0 ) begin
-			pcu_ifs_fetch_en_int <= 1'b1;
 			pcu_pip0_flush_int <= 1'b0;
 			pcu_pip1_flush_int <= 1'b0;
-			ifs_triggered_int  <= 1'b0;
+			fetch_sync_latch <= 1'b0;
 		end
-		else begin
-			if( pcu_ifs_busy_i & ifs_triggered_int == 1'b0 ) begin 
-				ifs_triggered_int <= 1'b1;
-				pcu_ifs_fetch_en_int <= 1'b0;
-			end
-			else if( ~pcu_ifs_busy_i & ifs_triggered_int == 1'b1 ) begin
-				if( ~pcu_pip0_stall_int & ~pcu_pip1_stall_int ) begin
-					ifs_triggered_int <= 1'b0;
-					pcu_ifs_fetch_en_int <= 1'b1;
-				end else begin
-					pcu_ifs_fetch_en_int <= 1'b0;
-				end
-			end
-			else begin
-				pcu_ifs_fetch_en_int <= 1'b0;
-			end
+		else begin	
+			if( pcu_pip1_stall_int & ~fetch_sync_latch ) begin fetch_sync_latch <= 1'b1; end 
+			else if( ~pcu_pip1_stall_int & fetch_sync_latch ) begin fetch_sync_latch <= 1'b0; end 
 		end
 		
 	end
+	
+	assign pcu_ifs_fetch_en_int = ~fetch_sync_latch & ~pcu_ifs_busy_i & ~pcu_pip0_stall_int;		 //& ~pcu_pip1_stall_int;
+	assign pcu_pip0_stall_int = (pcu_ifs_busy_i & pcu_decs_busy_i);
+	assign pcu_pip1_stall_int = pcu_exes_busy_i;
+	
 
 	/*
 		the trigger notices us when the if stage succesfully fetched a new instruction 
@@ -157,40 +150,24 @@ module beta_pipeline_control_unit import beta_pkg::*; #(
 	
 	/* DATA HAZARD FLAG */
 	
+	/* The hazard signal is not working. Actyuually every flag is active, but the signal is still 0. It looks like the SystemVerilog AND operator is broken. WTF?!? */
+	
 	logic 		data_hazard_flag_int;
 	logic[1:0] 	data_hazard_src_int;
 	
-	always_comb begin: data_hazard_proc
+	//always_comb begin: data_hazard_proc
 		
-		data_hazard_src_int = { ( pcu_exe_rd_i == pcu_dec_rsrc2_i ),( pcu_exe_rd_i == pcu_dec_rsrc1_i ) };
+	assign data_hazard_src_int = { ( pcu_exe_rd_i == pcu_dec_rsrc2_i ),( pcu_exe_rd_i == pcu_dec_rsrc1_i ) };
+	assign data_hazard_flag_int = ~pcu_r_op_i[1] & ( ~pcu_r_op_i[0] & data_hazard_src_int[0] | pcu_r_op_i[0] & ( data_hazard_src_int[0] | data_hazard_src_int[1] ) ) & pcu_exe_wreq_i & pcu_exe_multi_cycle_i & pcu_dec_multi_cycle_i;
 	
-		data_hazard_flag_int = ~pcu_r_op_i[1] & ( ~pcu_r_op_i[0] & data_hazard_src_int[0] | pcu_r_op_i[0] & ( data_hazard_src_int[0] | data_hazard_src_int[1] ) )
-		& pcu_exe_wreq_i & pcu_exe_multi_cycle_i & pcu_dec_multi_cycle_i;
-	
-	end
+	//end
 	
 	assign data_hazard_flag_o = data_hazard_flag_int;
 	assign data_hazard_src_o = data_hazard_src_int;
 	
 	/* CONTROL HAZARD PROCESS */
 	
-	/*always_ff@(posedge clk_i) begin : ctrl_hazard_proc
-	
-		if() begin
-		
-		end else if( pcu_exe_bju_en != 2'b00 ) begin
-		
-			
-		
-		end
-	
-	end*/
-	
-	assign pcu_ctrl_hazard_flag_o = ( pcu_exe_bju_en_i != 2'b00 );
-	
-	
-	assign pcu_pip0_stall_int = ifs_triggered_int & pcu_ifs_busy_i & pcu_decs_busy_i;
-	assign pcu_pip1_stall_int = pcu_exes_busy_i;
+	assign pcu_ctrl_hazard_flag_o = {( pcu_exe_bju_en_i != 2'b01 ),( pcu_exe_bju_en_i != 2'b00 )};	//01 Branches, 11 Jumps
 	
 	assign pcu_ifs_fetch_en_o = pcu_ifs_fetch_en_int;
 	assign pcu_pip0_stall_o = pcu_pip0_stall_int;
