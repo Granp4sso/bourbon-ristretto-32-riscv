@@ -18,7 +18,7 @@ module beta_exe_stage import beta_pkg::*; #(
 	input logic 			clk_i,
 	input logic 			rstn_i,
 	
-	input logic			exe_new_instr_i,	//beta
+	input logic			exe_new_instr_i,	
 	
 	input logic[DataWidth-1:0] 	exe_operand_a_i,
 	input logic[DataWidth-1:0]	exe_operand_b_i,
@@ -42,6 +42,7 @@ module beta_exe_stage import beta_pkg::*; #(
 
 	input logic			dec_stage_busy_i,
 	output logic			exe_stage_busy_o,
+	output logic			exe_branch_taken_o,
 	
 	//Data memory/LSU port 
 
@@ -78,7 +79,7 @@ module beta_exe_stage import beta_pkg::*; #(
 	logic[DataWidth-1:0]	bju_next_pc_int;
 	logic[DataWidth-1:0]	incr_pc_int;
 
-	logic[5:0] 		result_mux_sel_int;
+	logic[6:0] 		result_mux_sel_int;
 	logic	 		nextpc_mux_sel_int;
 
 	logic[1:0] 		shu_mode_int;
@@ -91,6 +92,12 @@ module beta_exe_stage import beta_pkg::*; #(
 	logic 			lsu_op_int;
 	logic 			lsu_en_int;
 	logic[DataWidth-1:0]	lsu_result_int;
+	
+	logic[2:0]		csr_op_int;
+	logic			csr_en_int;
+	logic[1:0]		priv_lvl_int = 2'b11;
+	
+	logic			exe_reg_wr_en_int;
 	
 	assign incr_pc_int = exe_pc_i + 32'h00000004;
 	assign exe_rd_addr_int = exe_rd_addr_i;
@@ -125,14 +132,20 @@ module beta_exe_stage import beta_pkg::*; #(
 		.execu_lsu_op_size_o(lsu_op_size_int),
 		.execu_lsu_op_o(lsu_op_int),
 		.execu_lsu_en_o(lsu_en_int),
-
+		
+		/*CSR Unit Port*/
+		.execu_csr_op_o(csr_op_int),
+		.execu_csr_en_o(csr_en_int),
+		
 		/*Selection Path Port*/
 		.execu_result_sel_o(result_mux_sel_int),
 		.execu_nextpc_sel_o(nextpc_mux_sel_int),
 
 		/*Busy/Synch signals port*/
+		.execu_new_instr_i(exe_new_instr_i),		//beta
 		.execu_dec_stage_busy_i(dec_stage_busy_i),
-		.execu_exe_stage_busy_o(exe_stage_busy_int)
+		.execu_exe_stage_busy_o(exe_stage_busy_int),
+		.execu_reg_wr_en_o(exe_reg_wr_en_int)		//beta
 
 	);
 
@@ -179,7 +192,7 @@ module beta_exe_stage import beta_pkg::*; #(
 		.bju_op_i(bju_op_int),
 
 		.bju_next_pc_o(bju_next_pc_int),
-		.bju_branch_taken_o()
+		.bju_branch_taken_o(exe_branch_taken_o)
 	);
 	
 	//Instantiating LSU
@@ -210,10 +223,29 @@ module beta_exe_stage import beta_pkg::*; #(
 		.lsu_result_o(lsu_result_int)	//The result shall be driven into an internal signal and then in the result MUX
 	);
 
+	//Instantiating CSR regfile
+	logic  [DataWidth-1:0] csr_rdata_int;
+	
+	beta_csr_regfile csr_reg (
+		.clk_i(clk_i),
+		.rstn_i(rstn_i),
+		.csr_addr_i(exe_operand_b_i[11:0]),
+		.csr_wdata_i(exe_operand_a_i),
+		.csr_op_i(csr_op_int),
+		.csr_en_i(csr_en_int), 
+		.csr_rdata_o(csr_rdata_int),
+		.csr_priv_lvl_i(priv_lvl_int),		//Fixed Machine Level 
+		.csr_pc_i(exe_pc_i),
+		.csr_control_o()		//Not implemented until we have the Trap Handling datapath
+	);
+	
 	//Result MUX
 	always_comb begin: result_mux
 		if(result_mux_sel_int[0] == 1'b1) begin //JALR and JAL result saving PC + 4 (return address)
 			exe_result_int = incr_pc_int;
+		end
+		else if(result_mux_sel_int[6] == 1'b1) begin //CSR read result
+			exe_result_int = csr_rdata_int;
 		end
 		else if(result_mux_sel_int[5] == 1'b1) begin //LOAD MEMORY result
 			exe_result_int = lsu_result_int;
@@ -250,15 +282,13 @@ module beta_exe_stage import beta_pkg::*; #(
 		endcase;
 	end
 	
-
 	assign exe_alu_op_end_o = exe_alu_op_end_int;
 	assign exe_next_pc_o = exe_next_pc_int;
 	assign exe_result_o = exe_result_int;
-	assign exe_reg_wr_en_o = exe_control_word_i.exe_reg_wr_en & exe_alu_op_end_int & ~exe_stage_busy_int; //Atm the alu_op_end is always 1
 	assign exe_rd_addr_o = exe_rd_addr_int;
 
-	//assign exe_stage_busy_o = (dec_stage_busy_i) ? 1'b1 : exe_stage_busy_int; commented to test the pcu
 	assign exe_stage_busy_o = exe_stage_busy_int;
+	assign exe_reg_wr_en_o = exe_reg_wr_en_int;
 
 
 endmodule;

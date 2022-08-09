@@ -70,6 +70,8 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 	logic[DataWidth-1:0]	pip_next_pc_int;
 	logic			pip_new_instr_int;
 
+	/* The new instruction signal lasts for 1 clock cycles and it cannot be stalled */
+
 	always_ff@(posedge clk_i) begin : reg_process
 		if( rstn_i == 1'b0 | pip_flush_i == 1'b1 ) begin
 			pip_offset12_int <= '0;
@@ -89,8 +91,9 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 			pip_rd_addr_int <= pip_rd_addr_i;
 			pip_control_word_int <= pip_control_word_i;
 			pip_next_pc_int <= pip_next_pc_i;
-			pip_new_instr_int <= pip_new_instr_i;
 		end
+		
+		pip_new_instr_int <= pip_new_instr_i;
 	end
 	
 	assign pip_offset12_o = pip_offset12_int;

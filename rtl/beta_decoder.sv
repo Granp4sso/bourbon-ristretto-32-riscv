@@ -191,7 +191,7 @@ module beta_decoder #()
 		cu_addr_int[0] = funct7_mask_bit_int & funct7_int[5];
 		cu_addr_int[3:1] = (funct3_mask_bit_int) ? '0 : funct3_int;
 		cu_addr_int[8:4] = opcode_int[6:2];
-
+		
 		invalid_instr_int = ( opcode_int[1:0] == 2'b11 ) ? invalid_opcode_int : 1'b1;
 
 	end
@@ -259,7 +259,7 @@ module beta_decoder #()
 				end
 			OPCODE_SYSTEM/4	:
 				begin
-					imm12_int = 12'h00;
+					imm12_int = instr_i[31:20];
 					imm20_int = 20'h00;
 				end
 

@@ -57,7 +57,10 @@ module beta_bju import beta_pkg::*; #(
 
 	always_comb begin: bju_compute_next_pc
 		case(bju_op_i.exe_bju_en)
-			2'b00: 	bju_selected_data_int = '0;
+			2'b00: 	begin
+					bju_selected_data_int = '0;
+					bju_branch_taken_int = 1'b0;
+				end					
 			2'b01:  begin //Branches
 				if(bju_alu_stat_i[bju_op_i.exe_bju_condition_sel] == ~bju_op_i.exe_bju_condition_neg) begin
 					bju_selected_data_int = (bju_offset12_i[11] == 1'b1 ) ? {19'h7ffff,bju_offset12_i,1'b0} : {19'h00000,bju_offset12_i,1'b0};	

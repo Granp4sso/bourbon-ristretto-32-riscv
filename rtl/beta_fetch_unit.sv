@@ -57,7 +57,9 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 
 	output logic[DataWidth-1:0]	if_fu_instr_o,
 	output logic			if_fu_new_instr_o,
-	output logic			if_fu_stage_busy_o
+	output logic			if_fu_stage_busy_o,
+	
+	input logic			if_fu_ctrl_hazard_flag_i
 );
 
 	logic 				if_stage_busy_int;
@@ -96,7 +98,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 			IMEM_WVLD: begin
 				if(if_fu_instr_valid_i) begin
 					if_stage_busy_int <= 1'b0;
-					instr_int <= if_fu_instr_rdata_i;
+					instr_int <= ( if_fu_ctrl_hazard_flag_i )? 32'h00000013 : if_fu_instr_rdata_i;	//inject a NOP if a ctrl hazard is detected
 					new_instr_int <= 1'b1;
 					imem_state_int <= IMEM_IDLE;		
 				end

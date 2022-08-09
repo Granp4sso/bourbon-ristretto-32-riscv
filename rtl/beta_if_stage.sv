@@ -72,6 +72,7 @@ module beta_if_stage import beta_pkg::*; #(
 	output logic			if_new_instr_o,
 
 	/*Intra stage sync*/
+	input logic			if_ctrl_hazard_flag_i,
 	output logic			if_stage_busy_o
 
 );
@@ -90,7 +91,7 @@ module beta_if_stage import beta_pkg::*; #(
 		end
 		else begin
 			if(if_pc_en_i & if_fetch_en_i) begin
-				curr_pc_int <= if_next_pc_i;
+				curr_pc_int <= (if_ctrl_hazard_flag_i) ? if_next_pc_i - 4 : if_next_pc_i;
 			end
 		end
 	end
@@ -98,19 +99,21 @@ module beta_if_stage import beta_pkg::*; #(
 	/*Fetch Unit instantiation*/
 
 	beta_fetch_unit #(
-		.DataWidth		(DataWidth)
+		.DataWidth			(DataWidth)
 	) fu (
-		.clk_i			(clk_i),
-		.rstn_i			(rstn_i),
-		.if_fu_fetch_en_i	(if_fetch_en_i),
-		.if_fu_instr_ready_i	(if_instr_ready_i),
-		.if_fu_instr_valid_i	(if_instr_valid_i),
-		.if_fu_instr_rdata_i	(if_instr_rdata_i),
-		.if_fu_instr_req_o	(instr_req_int),
+		.clk_i				(clk_i),
+		.rstn_i				(rstn_i),
+		.if_fu_fetch_en_i		(if_fetch_en_i),
+		.if_fu_instr_ready_i		(if_instr_ready_i),
+		.if_fu_instr_valid_i		(if_instr_valid_i),
+		.if_fu_instr_rdata_i		(if_instr_rdata_i),
+		.if_fu_instr_req_o		(instr_req_int),
 
-		.if_fu_instr_o		(instr_int),
-		.if_fu_new_instr_o	(new_instr_int),
-		.if_fu_stage_busy_o	(if_stage_busy_int)
+		.if_fu_instr_o			(instr_int),
+		.if_fu_new_instr_o		(new_instr_int),
+		.if_fu_stage_busy_o		(if_stage_busy_int),
+		
+		.if_fu_ctrl_hazard_flag_i	(if_ctrl_hazard_flag_i)
 
 	);
 

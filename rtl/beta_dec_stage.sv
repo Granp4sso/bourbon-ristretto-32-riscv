@@ -62,7 +62,7 @@
 	The wr_en signal must be high for exactly 1 clock cycle, so that an exe requested write will occur one time.
 	That's why we need the new instruction signal and latch that event. in this way when we receive a high wr_en signal,
 	the latch is lowered and the write executed. Untill a new instruction is fetched, no new write will be performed.
-	The signal of "new instruction" is now supposed to be forwarded to all further stages.
+	The signal of "new instruction" is now supposed to be forwarded to all further stages. V
 
 */
 
@@ -96,8 +96,15 @@ module beta_dec_stage import beta_pkg::*; #(
 	output logic 			dec_new_instr_o,	//beta
 
 	/*Intra stage sync*/
+	output logic[4:0]		dec_rsrc1_addr_o,
+	output logic[4:0]		dec_rsrc2_addr_o,
 	input logic			if_stage_busy_i,
-	output logic			dec_stage_busy_o
+	output logic			dec_stage_busy_o,
+	
+	/*Execution forward signals*/
+	input logic 			dec_forward_en_i,
+	input logic[1:0] 		dec_forward_src_i,
+	output logic[4:0]		dec_shadow_op_b_o		//This signal is always the decoded signal, and not the forwarded one
 	
 );
 
@@ -124,15 +131,16 @@ module beta_dec_stage import beta_pkg::*; #(
 	assign dec_offset20_o = imm20_int;
 	assign dec_rd_addr_o = rd_addr_int;
 	assign dec_control_word_o = control_word_int;
-	assign dec_operand_a_o = operand_a_int;
-	assign dec_operand_b_o = operand_b_int;
-
+	assign dec_operand_a_o = ( dec_forward_en_i & dec_forward_src_i[0] ) ? dec_rd_wdata_i : operand_a_int ;
+	assign dec_operand_b_o = ( dec_forward_en_i & dec_forward_src_i[1] ) ? dec_rd_wdata_i : operand_b_int ;
+	assign dec_shadow_op_b_o = operand_b_int[4:0] ;
+	
 	/*For the moment the decode stage is purely combinatorial, hence the unit is busy when a new instruction is decoded (1 clk cycle)*/
 
 	assign dec_stage_busy_o = new_instruction_latch;
-	assign rd_wr_en_int = new_instruction_latch & dec_reg_wr_en_i;
+	assign rd_wr_en_int = dec_reg_wr_en_i;
 
-	/*New instruction latch process*/
+	/*New instruction latch process : count one clock cycle*/
 	
 	always_ff@(posedge clk_i) begin: new_instruction_latch_proc
 		if(rstn_i == 1'b0) begin
@@ -141,7 +149,7 @@ module beta_dec_stage import beta_pkg::*; #(
 		else if(dec_new_instr_i) begin
 			new_instruction_latch <= 1'b1;
 		end
-		else if(dec_reg_wr_en_i & new_instruction_latch) begin
+		else if(new_instruction_latch) begin
 			new_instruction_latch <= 1'b0;
 		end
 	end
@@ -187,7 +195,7 @@ module beta_dec_stage import beta_pkg::*; #(
 
 	);
 
-	beta_cu control_unit (
+	beta_urom urom (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
 		.cu_address_i(cu_address_int),
@@ -200,17 +208,21 @@ module beta_dec_stage import beta_pkg::*; #(
 
 	always_comb begin : Mux_exe_stage_opA_selection
 
-		case( control_word_int.dec_src1_select )
-			2'b00 : operand_a_int = rs1_data_int;
-			2'b01 : operand_a_int = {imm20_int,12'h000};
-			default : operand_a_int = '0;
-		endcase;
+		if( control_word_int.dec_csr_imm ) begin
+			operand_a_int = {27'h0000000,rs1_addr_int};
+		end else begin
+			case( control_word_int.dec_src1_select )
+				2'b00 : operand_a_int = rs1_data_int;
+				2'b01 : operand_a_int = {imm20_int,12'h000};
+				default : operand_a_int = '0;
+			endcase;
+		end
 	end	
 
 	//Multiplexer for operand B selection & Extension
 
 	always_comb begin : Mux_exe_stage_opB_selection
-
+	
 		case( control_word_int.dec_src2_select )
 			2'b00 : operand_b_int = rs2_data_int;
 			2'b01 : begin
@@ -227,6 +239,8 @@ module beta_dec_stage import beta_pkg::*; #(
 
 	assign dec_next_pc_o = dec_next_pc_i;
 	assign dec_new_instr_o = dec_new_instr_int;
+	assign dec_rsrc1_addr_o = rs1_addr_int;
+	assign dec_rsrc2_addr_o = rs2_addr_int;
 
 
 endmodule;

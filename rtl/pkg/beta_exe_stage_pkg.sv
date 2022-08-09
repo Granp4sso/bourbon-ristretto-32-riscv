@@ -6,25 +6,30 @@ package beta_exe_stage_pkg;
 typedef struct packed {
 	//Control signals coming from the decode unit and handled by the execution stage control domain
 
-	logic exe_reg_wr_en;				//Enables reg write
+	logic 		exe_reg_wr_en;				//Enables reg write
+	
+	//CSR related signals
+	
+	logic 		exe_csr_en;
+	logic[2:0] 	exe_csr_op;
 
 	//Ex Stage control signals
-	logic exe_alu_unsigned_n_en;
-	logic exe_slt_en;				//determines if an slt instruction has been called
-	logic exe_alu_add_en;
-	logic exe_alu_sub_en;
-	logic[1:0] exe_alu_logic_en; 			//And, Or, Xor
+	logic 		exe_alu_unsigned_n_en;
+	logic 		exe_slt_en;				//determines if an slt instruction has been called
+	logic 		exe_alu_add_en;
+	logic 		exe_alu_sub_en;
+	logic[1:0] 	exe_alu_logic_en; 			//And, Or, Xor
 
-	logic[1:0] exe_mem_op_size;			//Memory operation size (Word, Halfword, Byte)
-	logic exe_mem_op;				//Memory operation (Store or Load)
-	logic exe_mem_op_en;				//Memory operation requested
+	logic[1:0] 	exe_mem_op_size;			//Memory operation size (Word, Halfword, Byte)
+	logic 		exe_mem_op;				//Memory operation (Store or Load)
+	logic 		exe_mem_op_en;				//Memory operation requested
 
-	logic[1:0] exe_shu_shift_en; 			//Shift left, right and arit.
+	logic[1:0] 	exe_shu_shift_en; 			//Shift left, right and arit.
 	
-	logic[1:0] exe_condition_sel; 			//Select None/Negative/Zero/Overflow bit in the exec stage
-	logic exe_condition_neg; 			//Select whether the condition value shall be complemented or not
-	logic exe_add_pc_to_res_en; 			//Add program counter to the ALU result in the execution stage
-	logic[1:0] exe_bju_en; 				//01: enable branches, 10: enable jump, 11: enable jump and link register
+	logic[1:0] 	exe_condition_sel; 			//Select None/Negative/Zero/Overflow bit in the exec stage
+	logic 		exe_condition_neg; 			//Select whether the condition value shall be complemented or not
+	logic 		exe_add_pc_to_res_en; 			//Add program counter to the ALU result in the execution stage
+	logic[1:0] 	exe_bju_en; 				//01: enable branches, 10: enable jump, 11: enable jump and link register
 	
 
 } exe_control_word_t;
