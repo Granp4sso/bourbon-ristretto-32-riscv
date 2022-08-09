@@ -4,7 +4,8 @@
 VERILATOR = /usr/share/verilator/include
 FILENAME =  beta_top
 OLDFILENAME = beta_if_stage
-TESTBENCH = $(FILENAME)_tb
+TESTBENCH = c_tb/$(FILENAME)_tb
+TESTBENCH_DEP = c_tb/mem
 
 
 WARNINGSBYPASS = -Wno-UNUSED -Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET #-Wno-LATCH 
@@ -12,7 +13,7 @@ WARNINGSBYPASS = -Wno-UNUSED -Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET #-Wno-LATCH
 #Targets
 
 verilate_traced: traced tbchange
-	g++ -I $(VERILATOR) -I rtl/obj_dir $(VERILATOR)/verilated.cpp $(VERILATOR)/verilated_vcd_c.cpp $(TESTBENCH).cpp rtl/obj_dir/V$(FILENAME)__ALL.a -o exec_$(FILENAME)
+	g++ -I $(VERILATOR) -I rtl/obj_dir -I c_tb $(VERILATOR)/verilated.cpp $(VERILATOR)/verilated_vcd_c.cpp $(TESTBENCH).cpp $(TESTBENCH_DEP).cpp rtl/obj_dir/V$(FILENAME)__ALL.a -o exec_$(FILENAME)
 
 tbchange:
 	mv $(OLDFILENAME)_tb.cpp $(TESTBENCH).cpp; sed -i 's/$(OLDFILENAME)/$(FILENAME)/g' $(TESTBENCH).cpp
