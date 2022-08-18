@@ -91,7 +91,7 @@ module beta_if_stage import beta_pkg::*; #(
 		end
 		else begin
 			if(if_pc_en_i & if_fetch_en_i) begin
-				curr_pc_int <= (if_ctrl_hazard_flag_i) ? if_next_pc_i - 4 : if_next_pc_i;
+				curr_pc_int <= if_next_pc_i ;//(if_ctrl_hazard_flag_i) ? if_next_pc_i - 4 : if_next_pc_i;
 			end
 		end
 	end

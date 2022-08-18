@@ -44,6 +44,10 @@ module beta_lsu import beta_pkg::*; #(
 	output logic 			wdata_req_o,
 
 	/*Error Data Memory Port*/
+	
+	/*Misaligned Address Exception*/
+	
+	output logic[1:0]		lsu_misalig_op_o,
 
 	/*Exe Control Unit Port*/
 	input  logic[1:0] 		lsu_op_size_i,
@@ -65,8 +69,30 @@ module beta_lsu import beta_pkg::*; #(
 	logic[DataWidth/8-1:0]		wdata_strb_int;
 	logic 				wdata_req_int;
 
+	logic [1:0]			lsu_misalig_op_int;
+	logic 				lsu_misalig_flag_int;
 	logic 				lsu_busy_int;
 	logic[DataWidth-1:0] 		lsu_result_int;
+	
+	
+	/* Misaligned store/loads path */
+	
+	logic [DataWidth-1:0] evaluating_addr_int;
+	
+	always_comb begin: misaligned_load_store
+
+		evaluating_addr_int = ( lsu_op_i == MEM_LOAD_OP ) ? op_addr_i : woffset_addr_int;
+		
+		case(lsu_op_size_i)
+			MEM_SIZE_WORD : lsu_misalig_flag_int = ( evaluating_addr_int[1] | evaluating_addr_int[0] ) ? 1'b1 : 1'b0;	//Word
+			MEM_SIZE_HALF : lsu_misalig_flag_int = ( evaluating_addr_int[0] ) ? 1'b1 : 1'b0; 				//Half Word
+			default : lsu_misalig_flag_int = 1'b0;
+		endcase
+		
+		lsu_misalig_op_int[0] = ( lsu_op_i == MEM_LOAD_OP ) ? lsu_misalig_flag_int : 1'b0;
+		lsu_misalig_op_int[1] = ( lsu_op_i == MEM_STORE_OP ) ? lsu_misalig_flag_int : 1'b0;
+	
+	end
 
 	/*Read Data Memory Protocol*/
 
@@ -125,8 +151,10 @@ module beta_lsu import beta_pkg::*; #(
 
 	logic[wdmem_fsm_bsize-1:0] wdmem_state;
 	logic[DataWidth-1:0] woffset_int;
+	logic[DataWidth-1:0] woffset_addr_int;
 
 	assign woffset_int = (lsu_woffset_i[11]) ? {20'hfffff,lsu_woffset_i} : {20'h00000,lsu_woffset_i}; //Sign extended store offset
+	assign woffset_addr_int = op_addr_i + woffset_int;
 
 	always_ff@(posedge clk_i) begin: wdmem_read_protocol
 		if(rstn_i == 1'b0) begin
@@ -148,7 +176,7 @@ module beta_lsu import beta_pkg::*; #(
 					lsu_busy_int <= 1'b1;
 					wdata_req_int <= 1'b1;
 					wdata_data_int <= op_data_i;
-					wdata_addr_int <= op_addr_i + woffset_int;
+					wdata_addr_int <= woffset_addr_int ;
 					case (lsu_op_size_i)
 						MEM_SIZE_WORD : wdata_strb_int <= 4'b1111;	//Word
 						MEM_SIZE_HALF : wdata_strb_int <= 4'b0011; 	//Half Word
@@ -192,5 +220,6 @@ module beta_lsu import beta_pkg::*; #(
 
 	assign lsu_busy_o = lsu_busy_int;
 	assign lsu_result_o = lsu_result_int;
+	assign lsu_misalig_op_o = lsu_misalig_op_int;
 
 endmodule

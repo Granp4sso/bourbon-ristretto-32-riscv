@@ -75,6 +75,7 @@ module beta_pipeline_control_unit import beta_pkg::*; #(
 	
 	/* Control Hazard Signals */
 	
+	input logic			pcu_exe_trap_flag_i,
 	input logic[1:0]		pcu_exe_bju_en_i,
 	output logic[1:0]		pcu_ctrl_hazard_flag_o
 	
@@ -165,9 +166,12 @@ module beta_pipeline_control_unit import beta_pkg::*; #(
 	assign data_hazard_flag_o = data_hazard_flag_int;
 	assign data_hazard_src_o = data_hazard_src_int;
 	
-	/* CONTROL HAZARD PROCESS */
+	/* CONTROL HAZARD PROCESS 
+		At the moment the bit 0 of ctrl_hazard_flag encodes for traps as well, since they behave like jumps. When branch predictors will be supported, traps
+		will need an extra bit in order to separate them from jumps
+	*/
 	
-	assign pcu_ctrl_hazard_flag_o = {( pcu_exe_bju_en_i != 2'b01 ),( pcu_exe_bju_en_i != 2'b00 )};	//01 Branches, 11 Jumps
+	assign pcu_ctrl_hazard_flag_o = {( pcu_exe_bju_en_i != 2'b01 ),( pcu_exe_bju_en_i != 2'b00 ) | pcu_exe_trap_flag_i};	//01 Branches, 11 Jumps/Traps
 	
 	assign pcu_ifs_fetch_en_o = pcu_ifs_fetch_en_int;
 	assign pcu_pip0_stall_o = pcu_pip0_stall_int;

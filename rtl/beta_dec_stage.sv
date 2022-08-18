@@ -93,13 +93,18 @@ module beta_dec_stage import beta_pkg::*; #(
 	output logic[4:0] 		dec_rd_addr_o,
 	output dec_control_word_t 	dec_control_word_o,
 	output logic[DataWidth-1:0]	dec_next_pc_o,
-	output logic 			dec_new_instr_o,	//beta
+	output logic 			dec_new_instr_o,	
+	
+	/* Exception Signals */
+	output logic			dec_invalid_instr_o,
+	output logic[DataWidth-1:0] 	dec_invalid_instrval_o,
 
 	/*Intra stage sync*/
 	output logic[4:0]		dec_rsrc1_addr_o,
 	output logic[4:0]		dec_rsrc2_addr_o,
 	input logic			if_stage_busy_i,
 	output logic			dec_stage_busy_o,
+	
 	
 	/*Execution forward signals*/
 	input logic 			dec_forward_en_i,
@@ -241,6 +246,8 @@ module beta_dec_stage import beta_pkg::*; #(
 	assign dec_new_instr_o = dec_new_instr_int;
 	assign dec_rsrc1_addr_o = rs1_addr_int;
 	assign dec_rsrc2_addr_o = rs2_addr_int;
+	assign dec_invalid_instr_o = invalid_instr_int;
+	assign dec_invalid_instrval_o = dec_instr_i;
 
 
 endmodule;

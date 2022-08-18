@@ -36,13 +36,17 @@ module beta_exe_stage import beta_pkg::*; #(
 	output logic[4:0] 		exe_rd_addr_o,
 	output logic			exe_reg_wr_en_o,
 	
-
-
+	/* Illegal instruction Exception Signals */
+	
+	input logic			exe_invalid_instr_i,
+	input logic[DataWidth-1:0] 	exe_invalid_instrval_i,
+	
 	//Inter Stages sync port
 
-	input logic			dec_stage_busy_i,
+	input  logic			dec_stage_busy_i,
 	output logic			exe_stage_busy_o,
 	output logic			exe_branch_taken_o,
+	output logic			exe_trap_taken_o,
 	
 	//Data memory/LSU port 
 
@@ -76,11 +80,14 @@ module beta_exe_stage import beta_pkg::*; #(
 	exe_alu_op_t		alu_op_int;
 	exe_bju_op_t		bju_op_int;
 
+	logic			bju_misalig_pc_int;
 	logic[DataWidth-1:0]	bju_next_pc_int;
+	logic			bju_branch_taken_int;
 	logic[DataWidth-1:0]	incr_pc_int;
 
 	logic[6:0] 		result_mux_sel_int;
 	logic	 		nextpc_mux_sel_int;
+	logic[1:0]		trap_nextpc_sel_int;
 
 	logic[1:0] 		shu_mode_int;
 	logic	 		shu_en_int;
@@ -98,6 +105,7 @@ module beta_exe_stage import beta_pkg::*; #(
 	logic[1:0]		priv_lvl_int = 2'b11;
 	
 	logic			exe_reg_wr_en_int;
+	logic 			exe_trap_taken_int;
 	
 	assign incr_pc_int = exe_pc_i + 32'h00000004;
 	assign exe_rd_addr_int = exe_rd_addr_i;
@@ -126,6 +134,7 @@ module beta_exe_stage import beta_pkg::*; #(
 
 		/*Branch & Jump Unit Port*/
 		.execu_bju_op_o(bju_op_int),
+		.execu_branch_taken_i(bju_branch_taken_int),
 
 		/*Load & Store Unit Port*/
 		.execu_lsu_busy_i(lsu_busy_int),
@@ -136,6 +145,12 @@ module beta_exe_stage import beta_pkg::*; #(
 		/*CSR Unit Port*/
 		.execu_csr_op_o(csr_op_int),
 		.execu_csr_en_o(csr_en_int),
+		
+		/*Trap Detection Port*/
+		
+		.execu_trap_detected_i(trap_detected_int),
+		.execu_trap_nextpc_sel_o(trap_nextpc_sel_int),
+		.execu_trap_taken_o(exe_trap_taken_int),
 		
 		/*Selection Path Port*/
 		.execu_result_sel_o(result_mux_sel_int),
@@ -191,13 +206,16 @@ module beta_exe_stage import beta_pkg::*; #(
 		.bju_alu_stat_i(exe_alu_stat_int),
 		.bju_op_i(bju_op_int),
 
+		.bju_misalig_pc_o(bju_misalig_pc_int),
 		.bju_next_pc_o(bju_next_pc_int),
-		.bju_branch_taken_o(exe_branch_taken_o)
+		.bju_branch_taken_o(bju_branch_taken_int)
 	);
 	
 	//Instantiating LSU
 
-	logic [31:0] lsu_addr_int = alu_result_int; 
+	logic [31:0]	lsu_addr_int = alu_result_int; 
+	logic[1:0]	lsu_misalig_op_int;
+	
 	beta_lsu lsu (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
@@ -215,6 +233,7 @@ module beta_exe_stage import beta_pkg::*; #(
 		.wdata_addr_o(wdata_addr_o),
 		.wdata_strb_o(wdata_strb_o),
 		.wdata_req_o(wdata_req_o),
+		.lsu_misalig_op_o(lsu_misalig_op_int),
 		.lsu_op_size_i(lsu_op_size_int),
 		.lsu_op_i(lsu_op_int),
 		.lsu_op_en_i(lsu_en_int),
@@ -224,7 +243,20 @@ module beta_exe_stage import beta_pkg::*; #(
 	);
 
 	//Instantiating CSR regfile
-	logic  [DataWidth-1:0] csr_rdata_int;
+	logic [DataWidth-1:0] 	csr_rdata_int;
+	csr_ctrl_t		tcu_csr_control_int;
+	logic [DataWidth-1:0] 	tcu_mtval_int;
+	logic [DataWidth-1:0] 	tcu_mcause_int;
+	logic [DataWidth-1:0] 	tcu_mepc_int;
+	logic [DataWidth-1:0] 	csr_mepc_int;
+	logic			tcu_sw_int_pend_int;
+	logic  			tcu_tim_int_pend_int;			
+	logic   		tcu_ext_int_pend_int;
+	logic [2:0]		tcu_trap_state_int;
+	logic			tcu_csr_we_int;
+	
+	logic [DataWidth-1:0]	trap_address_int;
+	logic [1:0]		trap_detected_int;
 	
 	beta_csr_regfile csr_reg (
 		.clk_i(clk_i),
@@ -234,15 +266,53 @@ module beta_exe_stage import beta_pkg::*; #(
 		.csr_op_i(csr_op_int),
 		.csr_en_i(csr_en_int), 
 		.csr_rdata_o(csr_rdata_int),
+		/* Trap Signals */
+		.csr_mtval_i(tcu_mtval_int),
+		.csr_mcause_i(tcu_mcause_int),
+		.csr_mepc_i(tcu_mepc_int),
+		.csr_sw_int_pend_i(tcu_sw_int_pend_int),
+		.csr_tim_int_pend_i(tcu_tim_int_pend_int),			
+		.csr_ext_int_pend_i(tcu_ext_int_pend_int),
+		.csr_trap_state_i(tcu_trap_state_int),			//MIE,MPIE,MPP
+		.tcu_csr_we_i(tcu_csr_we_int),
+		.csr_mepc_o(csr_mepc_int),
+		/* Trap Signals */
 		.csr_priv_lvl_i(priv_lvl_int),		//Fixed Machine Level 
-		.csr_pc_i(exe_pc_i),
-		.csr_control_o()		//Not implemented until we have the Trap Handling datapath
+		.csr_control_o(tcu_csr_control_int)	
+	);
+	
+	//Instantiating Trap Control Unity
+	
+	beta_trap_control_unit tcu (
+		.clk_i(clk_i),
+		.rstn_i(rstn_i),
+		.priv_lvl_i(priv_lvl_int[0]),
+		.tcu_next_pc_i(pretrap_next_pc_int),
+		.tcu_fault_instr_i(exe_invalid_instrval_i),
+		.tcu_fault_addr_i(lsu_addr_int),
+		.tcu_csr_control_i(tcu_csr_control_int),
+		.tcu_mtval_o(tcu_mtval_int),
+		.tcu_mcause_o(tcu_mcause_int),
+		.tcu_mepc_o(tcu_mepc_int),
+		.tcu_sw_int_pend_o(tcu_sw_int_pend_int),
+		.tcu_tim_int_pend_o(tcu_tim_int_pend_int),			
+		.tcu_ext_int_pend_o(tcu_ext_int_pend_int),
+		.tcu_trap_state_o(tcu_trap_state_int),
+		.tcu_csr_we_o(tcu_csr_we_int),
+		.tcu_sw_intr_i(0),
+		.tcu_tim_intr_i(0),
+		.tcu_ext_intr_i(0),
+		.tcu_instr_exception_i({exe_invalid_instr_i,bju_misalig_pc_int}),
+		.tcu_lsu_exception_i(lsu_misalig_op_int),
+		.tcu_trap_address_o(trap_address_int),
+		.tcu_trap_detected_o(trap_detected_int),
+		.tcu_halt_o()
 	);
 	
 	//Result MUX
 	always_comb begin: result_mux
 		if(result_mux_sel_int[0] == 1'b1) begin //JALR and JAL result saving PC + 4 (return address)
-			exe_result_int = incr_pc_int;
+			exe_result_int = exe_pc_i;//incr_pc_int;
 		end
 		else if(result_mux_sel_int[6] == 1'b1) begin //CSR read result
 			exe_result_int = csr_rdata_int;
@@ -275,17 +345,28 @@ module beta_exe_stage import beta_pkg::*; #(
 	end
 
 	//Next PC MUX
+	logic [DataWidth-1:0] pretrap_next_pc_int;
+	
 	always_comb begin: next_pc_mux
 		case(nextpc_mux_sel_int)
-			1'b0: exe_next_pc_int = incr_pc_int;
-			1'b1: exe_next_pc_int = bju_next_pc_int;
+			1'b0: pretrap_next_pc_int = incr_pc_int;
+			1'b1: pretrap_next_pc_int = bju_next_pc_int;
+		endcase;
+		
+		case(trap_nextpc_sel_int)
+			2'b00: exe_next_pc_int = pretrap_next_pc_int;	//Conventional Execution
+			2'b01: exe_next_pc_int = trap_address_int;	//Trapped Execution
+			2'b10: exe_next_pc_int = csr_mepc_int;		//xRET Execution
+			default: exe_next_pc_int = pretrap_next_pc_int;
 		endcase;
 	end
 	
 	assign exe_alu_op_end_o = exe_alu_op_end_int;
+	assign exe_branch_taken_o = bju_branch_taken_int;
 	assign exe_next_pc_o = exe_next_pc_int;
 	assign exe_result_o = exe_result_int;
 	assign exe_rd_addr_o = exe_rd_addr_int;
+	assign exe_trap_taken_o = exe_trap_taken_int;
 
 	assign exe_stage_busy_o = exe_stage_busy_int;
 	assign exe_reg_wr_en_o = exe_reg_wr_en_int;

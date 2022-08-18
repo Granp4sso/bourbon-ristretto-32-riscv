@@ -192,7 +192,7 @@ module beta_decoder #()
 		cu_addr_int[3:1] = (funct3_mask_bit_int) ? '0 : funct3_int;
 		cu_addr_int[8:4] = opcode_int[6:2];
 		
-		invalid_instr_int = ( opcode_int[1:0] == 2'b11 ) ? invalid_opcode_int : 1'b1;
+		invalid_instr_int = ~opcode_int[0] | ~opcode_int[1] | invalid_opcode_int;
 
 	end
 

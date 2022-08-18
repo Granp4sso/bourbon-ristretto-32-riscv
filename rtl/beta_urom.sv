@@ -60,7 +60,7 @@ module beta_urom import beta_pkg::*; #()(
 	input logic clk_i,
 	input logic rstn_i,
 	input logic[8:0] cu_address_i,
-	input logic invalid_instr_i, //Not used atm because I need to understand how to drive the datapath in case of exception
+	input logic invalid_instr_i, 
 
 	output dec_control_word_t control_word_o
 	
@@ -71,7 +71,7 @@ module beta_urom import beta_pkg::*; #()(
 
 	//assign control_word_o = microROM[cu_address_i];
 
-	assign control_word_o = cw_int;
+	assign control_word_o = (invalid_instr_i) ? '0 : cw_int;
 
 	always_comb begin : micro_ROM
 		cw_int = '0;

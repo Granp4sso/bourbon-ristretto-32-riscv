@@ -67,6 +67,9 @@ module beta_top import beta_pkg::*; #(
 	logic[4:0]		dec_rsrc1_addr_int;
 	logic[4:0]		dec_rsrc2_addr_int;
 	logic			exe_branch_taken_int;
+	logic			dec_invalid_instr_int;
+	logic[DataWidth-1:0] 	dec_invalid_instrval_int;
+	logic			exe_trap_taken_int;
 	
 	logic[DataWidth-1:0]	next_pc_int;
 	logic			alu_op_end_int;
@@ -97,6 +100,8 @@ module beta_top import beta_pkg::*; #(
 	dec_control_word_t 	pip1_control_word_int;
 	logic[DataWidth-1:0]	pip1_next_pc_int;
 	logic			pip1_new_instr_int;
+	logic			pip1_invalid_instr_int;
+	logic[DataWidth-1:0] 	pip1_invalid_instrval_int;
 	
 	//Inter stages sync signals
 
@@ -201,7 +206,10 @@ module beta_top import beta_pkg::*; #(
 		.dec_rd_addr_o(dec_rd_addr_int),
 		.dec_control_word_o(dec_control_word_int),
 		.dec_next_pc_o(dec_next_pc_int),
-		.dec_new_instr_o(dec_new_instr_int),	//beta
+		.dec_new_instr_o(dec_new_instr_int),	
+		
+		.dec_invalid_instr_o(dec_invalid_instr_int),
+		.dec_invalid_instrval_o(dec_invalid_instrval_int),
 
 		.dec_rsrc1_addr_o(dec_rsrc1_addr_int),
 		.dec_rsrc2_addr_o(dec_rsrc2_addr_int),
@@ -229,7 +237,10 @@ module beta_top import beta_pkg::*; #(
 		.pip_control_word_i(dec_control_word_int),
 	
 		.pip_next_pc_i(dec_next_pc_int),
-		.pip_new_instr_i(dec_new_instr_int),	//beta
+		.pip_new_instr_i(dec_new_instr_int),	
+
+		.pip_invalid_instr_i(dec_invalid_instr_int),
+		.pip_invalid_instrval_i(dec_invalid_instrval_int),
 
 		/* Output Execution Stage signals */
 
@@ -241,7 +252,10 @@ module beta_top import beta_pkg::*; #(
 		.pip_control_word_o(pip1_control_word_int),
 
 		.pip_next_pc_o(pip1_next_pc_int),
-		.pip_new_instr_o(pip1_new_instr_int),	//beta
+		.pip_new_instr_o(pip1_new_instr_int),	
+		
+		.pip_invalid_instr_o(pip1_invalid_instr_int),
+		.pip_invalid_instrval_o(pip1_invalid_instrval_int),
 
 		/* Pipeline Control Unit signals*/
 	
@@ -265,7 +279,7 @@ module beta_top import beta_pkg::*; #(
 		.exe_offset20_i(pip1_offset20_int),
 		.exe_control_word_i(pip1_control_word_int[22:0]),
 		
-		.exe_new_instr_i(pip1_new_instr_int),	//beta
+		.exe_new_instr_i(pip1_new_instr_int),	
 
 		.exe_alu_op_end_o(alu_op_end_int),
 		.exe_next_pc_o(next_pc_int),
@@ -273,10 +287,14 @@ module beta_top import beta_pkg::*; #(
 
 		.exe_rd_addr_o(exe_rd_addr_int),
 		.exe_reg_wr_en_o(reg_wr_en_int),
+		
+		.exe_invalid_instr_i(pip1_invalid_instr_int),
+		.exe_invalid_instrval_i(pip1_invalid_instrval_int),
 
 		.dec_stage_busy_i(dec_stage_busy_int),
 		.exe_stage_busy_o(exe_stage_busy_int),
 		.exe_branch_taken_o(exe_branch_taken_int),
+		.exe_trap_taken_o(exe_trap_taken_int),
 
 		.rdata_ready_i(rdata_ready_i),
 		.rdata_valid_i(rdata_valid_i),
@@ -372,6 +390,7 @@ module beta_top import beta_pkg::*; #(
 		
 		/* Control Hazard Signals */
 	
+		.pcu_exe_trap_flag_i(exe_trap_taken_int),
 		.pcu_exe_bju_en_i(pcu_exe_bju_en_int),
 		.pcu_ctrl_hazard_flag_o(pcu_ctrl_hazard_flag_int)
 	);

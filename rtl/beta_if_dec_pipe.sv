@@ -60,7 +60,7 @@ module beta_if_dec_pipe import beta_pkg::*; #(
 
 	always_ff@(posedge clk_i) begin : reg_process
 		if( rstn_i == 1'b0 | pip_flush_i == 1'b1 ) begin
-			pip_instr_int <= '0;
+			pip_instr_int <= 32'h00000013;
 			pip_new_instr_int <= '0;
 			pip_next_pc_int <= '0;
 		end

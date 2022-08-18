@@ -71,7 +71,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 
 	always_ff@(posedge clk_i) begin: imem_protocol
 		if(rstn_i == 1'b0) begin
-			instr_int <= '0;
+			instr_int <= 32'h00000013;
 			if_stage_busy_int <= 1'b0;
 			new_instr_int <= 1'b0;
 			imem_state_int <= IMEM_IDLE;

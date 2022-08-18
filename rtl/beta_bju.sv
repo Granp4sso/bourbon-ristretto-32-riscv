@@ -47,6 +47,7 @@ module beta_bju import beta_pkg::*; #(
 	input exe_alu_status_t		bju_alu_stat_i,
 	input exe_bju_op_t		bju_op_i,
 
+	output logic			bju_misalig_pc_o,
 	output logic[DATAWIDTH-1:0] 	bju_next_pc_o,
 	output logic 			bju_branch_taken_o
 	
@@ -54,8 +55,15 @@ module beta_bju import beta_pkg::*; #(
 	logic[DATAWIDTH-1:0] 	bju_next_pc_int;
 	logic[DATAWIDTH-1:0] 	bju_selected_data_int;
 	logic			bju_branch_taken_int;
+	logic			bju_misalig_pc_int;
 
+	always_comb begin: bju_misalig_address
+	
+		bju_misalig_pc_int = bju_next_pc_int[1] | bju_next_pc_int[0];
+	end
+	
 	always_comb begin: bju_compute_next_pc
+	
 		case(bju_op_i.exe_bju_en)
 			2'b00: 	begin
 					bju_selected_data_int = '0;
@@ -79,12 +87,13 @@ module beta_bju import beta_pkg::*; #(
 				bju_branch_taken_int = 1'b0;		
 			end
 		endcase;
+		
 	end
 
-	assign bju_next_pc_int = (&bju_op_i.exe_bju_en) ? bju_selected_data_int : bju_pc_i + bju_selected_data_int; //In case of JALR do not add to pc
+	assign bju_next_pc_int = (&bju_op_i.exe_bju_en) ? bju_selected_data_int : bju_pc_i + bju_selected_data_int - 32'h00000004; //In case of JALR do not add to pc
 	assign bju_branch_taken_o = bju_branch_taken_int;
-
-	assign bju_next_pc_o = bju_next_pc_int;
+	assign bju_misalig_pc_o = bju_misalig_pc_int;
+	assign bju_next_pc_o = ( bju_misalig_pc_int ) ? bju_pc_i + 32'h00000004 : bju_next_pc_int;
 
 
 

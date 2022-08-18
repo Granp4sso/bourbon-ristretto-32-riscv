@@ -41,7 +41,12 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 	input logic[4:0] 		pip_rd_addr_i,
 	input dec_control_word_t 	pip_control_word_i,
 	input logic[DataWidth-1:0]	pip_next_pc_i,
-	input logic			pip_new_instr_i,	//beta
+	input logic			pip_new_instr_i,
+	
+	/* Illegal Instruction Exception Signals */
+	
+	input logic			pip_invalid_instr_i,
+	input logic[DataWidth-1:0] 	pip_invalid_instrval_i,
 
 	/* Output Execution Stage signals */
 
@@ -52,7 +57,12 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 	output logic[4:0] 		pip_rd_addr_o,
 	output dec_control_word_t 	pip_control_word_o,
 	output logic[DataWidth-1:0]	pip_next_pc_o,
-	output logic			pip_new_instr_o,	//beta
+	output logic			pip_new_instr_o,	
+	
+	/* Illegal Instruction Exception Signals */
+	
+	output logic			pip_invalid_instr_o,
+	output logic[DataWidth-1:0] 	pip_invalid_instrval_o,
 
 	/* Pipeline Control Unit signals*/
 
@@ -69,6 +79,8 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 	dec_control_word_t 	pip_control_word_int;	
 	logic[DataWidth-1:0]	pip_next_pc_int;
 	logic			pip_new_instr_int;
+	logic			pip_invalid_instr_int;
+	logic[DataWidth-1:0] 	pip_invalid_instrval_int;
 
 	/* The new instruction signal lasts for 1 clock cycles and it cannot be stalled */
 
@@ -82,6 +94,8 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 			pip_control_word_int <= '0;
 			pip_next_pc_int <= '0;	
 			pip_new_instr_int <= '0;
+			pip_invalid_instr_int <= '0;
+			pip_invalid_instrval_int <= '0;
 		end
 		else if( pip_stall_i == 1'b0 ) begin
 			pip_offset12_int <= pip_offset12_i;
@@ -91,6 +105,8 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 			pip_rd_addr_int <= pip_rd_addr_i;
 			pip_control_word_int <= pip_control_word_i;
 			pip_next_pc_int <= pip_next_pc_i;
+			pip_invalid_instr_int <= pip_invalid_instr_i;
+			pip_invalid_instrval_int <= pip_invalid_instrval_i;
 		end
 		
 		pip_new_instr_int <= pip_new_instr_i;
@@ -104,6 +120,8 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 	assign pip_control_word_o = pip_control_word_int;
 	assign pip_next_pc_o = pip_next_pc_int;
 	assign pip_new_instr_o = pip_new_instr_int;
+	assign pip_invalid_instrval_o = pip_invalid_instrval_int;
+	assign pip_invalid_instr_o = pip_invalid_instr_int;
 
 endmodule
 
