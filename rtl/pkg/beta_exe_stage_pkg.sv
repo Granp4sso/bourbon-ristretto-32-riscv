@@ -1,7 +1,15 @@
 `ifndef EXE_STAGE_PKG
 `define EXE_STAGE_PKG
 
+`include "pkg/beta_csr_pkg.sv"
+`include "pkg/beta_trap_pkg.sv"
+
 package beta_exe_stage_pkg;
+
+import beta_csr_pkg::*;
+import beta_trap_pkg::*;
+
+export *::*;
 
 typedef struct packed {
 	//Control signals coming from the decode unit and handled by the execution stage control domain
@@ -71,9 +79,9 @@ parameter logic[1:0] SHIFT_ARIGHT =	2'b11;
 
 //LOAD AND STORE UNIT MACROS
 
-parameter logic[1:0] 	MEM_SIZE_WORD = 2'b00;
-parameter logic[1:0] 	MEM_SIZE_HALF = 2'b01;
-parameter logic[1:0] 	MEM_SIZE_BYTE = 2'b10;
+parameter logic[1:0] 	MEM_SIZE_WORD = 2'b01;
+parameter logic[1:0] 	MEM_SIZE_HALF = 2'b10;
+parameter logic[1:0] 	MEM_SIZE_BYTE = 2'b11;
 
 parameter logic		MEM_LOAD_OP = 1'b0;
 parameter logic		MEM_STORE_OP = 1'b1;

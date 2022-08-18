@@ -1,5 +1,5 @@
-`ifndef DEC_CSR_PKG
-`define DEC_CSR_PKG
+`ifndef EXE_CSR_PKG
+`define EXE_CSR_PKG
 
 package beta_csr_pkg;
 
@@ -85,16 +85,18 @@ typedef struct packed {
 
 	logic [31:0] mtval;		//MTVAL register must be carried outside
 	logic [31:0] mcause;		//MCAUSE register must be carried outside
-	logic [31:0] mepc;		//MEPC register must be carried outside
 	logic [1:0]  soft_int;		//Bit 0 is for mie.MSIE, bit 1 is for mie.MSIP
 	logic [1:0]  tim_int;		//Bit 0 is for mie.MTIE, bit 1 is for mie.MTIP
 	logic [1:0]  ext_int;		//Bit 0 is for mie.MEIE, bit 1 is for mie.MEIP
 	logic [31:0] mtvec;		//Signal driving the trap base address and addressing mode (vectored or direct)
+	logic mpp;			//It encodes the mstatus MPP bit.
+	logic mpie;	
+	logic mie;			//It encodes the MIE and SIE bits. SIE is not supported, so the signal is 1 bit wide.
 	logic user_endianess;		//It encodes the mstatus UBE bit. (0 little-endian and 1 Big-endian) for the LSU. 
 	logic machine_endianess;	//It encodes the mstatus MBE bit. (0 little-endian and 1 Big-endian) for the LSU.
-	logic previous_privilege;	//It encodes the mstatus MPP bit.
+	
 	logic modify_privilege;		//It encodes the mstatus MPRV bit. If it is 0 Load/Stores are executed as normal, otherwise as MPP
-	logic global_interrupt_enable;	//It encodes the MIE and SIE bits. SIE is not supported, so the signal is 1 bit wide.
+	
 
 } csr_ctrl_t;
 
