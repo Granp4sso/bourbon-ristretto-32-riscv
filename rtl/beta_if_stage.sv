@@ -73,7 +73,9 @@ module beta_if_stage import beta_pkg::*; #(
 
 	/*Intra stage sync*/
 	input logic			if_ctrl_hazard_flag_i,
-	output logic			if_stage_busy_o
+	input logic			if_trap_hazard_flag_i,
+	output logic			if_stage_busy_o,
+	output logic[1:0]		if_penality_o
 
 );
 
@@ -112,7 +114,9 @@ module beta_if_stage import beta_pkg::*; #(
 		.if_fu_instr_o			(instr_int),
 		.if_fu_new_instr_o		(new_instr_int),
 		.if_fu_stage_busy_o		(if_stage_busy_int),
+		.if_fu_penality_o		(if_penality_o),
 		
+		.if_fu_trap_hazard_flag_i	(if_trap_hazard_flag_i),
 		.if_fu_ctrl_hazard_flag_i	(if_ctrl_hazard_flag_i)
 
 	);

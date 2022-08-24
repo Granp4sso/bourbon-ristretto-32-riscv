@@ -41,12 +41,19 @@ module beta_exe_stage import beta_pkg::*; #(
 	input logic			exe_invalid_instr_i,
 	input logic[DataWidth-1:0] 	exe_invalid_instrval_i,
 	
+	/* Interrupt signals */
+	
+	input logic 			exe_sw_intr_i,
+	input logic			exe_tim_intr_i,
+	input logic			exe_ext_intr_i,
+	
 	//Inter Stages sync port
 
+	input  logic[1:0]		exe_instr_penality_i,
 	input  logic			dec_stage_busy_i,
 	output logic			exe_stage_busy_o,
 	output logic			exe_branch_taken_o,
-	output logic			exe_trap_taken_o,
+	output logic [1:0]		exe_trap_taken_o,
 	
 	//Data memory/LSU port 
 
@@ -105,7 +112,7 @@ module beta_exe_stage import beta_pkg::*; #(
 	logic[1:0]		priv_lvl_int = 2'b11;
 	
 	logic			exe_reg_wr_en_int;
-	logic 			exe_trap_taken_int;
+	logic[1:0]		exe_trap_taken_int;
 	
 	assign incr_pc_int = exe_pc_i + 32'h00000004;
 	assign exe_rd_addr_int = exe_rd_addr_i;
@@ -149,6 +156,7 @@ module beta_exe_stage import beta_pkg::*; #(
 		/*Trap Detection Port*/
 		
 		.execu_trap_detected_i(trap_detected_int),
+		.execu_trap_ret_i(exe_control_word_i[24]),	//xRET Instruction flag
 		.execu_trap_nextpc_sel_o(trap_nextpc_sel_int),
 		.execu_trap_taken_o(exe_trap_taken_int),
 		
@@ -213,7 +221,8 @@ module beta_exe_stage import beta_pkg::*; #(
 	
 	//Instantiating LSU
 
-	logic [31:0]	lsu_addr_int = alu_result_int; 
+	logic[31:0]	lsu_addr_int = alu_result_int; 
+	logic[31:0]	lsu_invalid_addr_int;
 	logic[1:0]	lsu_misalig_op_int;
 	
 	beta_lsu lsu (
@@ -234,6 +243,7 @@ module beta_exe_stage import beta_pkg::*; #(
 		.wdata_strb_o(wdata_strb_o),
 		.wdata_req_o(wdata_req_o),
 		.lsu_misalig_op_o(lsu_misalig_op_int),
+		.lsu_invalid_addr_o(lsu_invalid_addr_int),
 		.lsu_op_size_i(lsu_op_size_int),
 		.lsu_op_i(lsu_op_int),
 		.lsu_op_en_i(lsu_en_int),
@@ -244,7 +254,8 @@ module beta_exe_stage import beta_pkg::*; #(
 
 	//Instantiating CSR regfile
 	logic [DataWidth-1:0] 	csr_rdata_int;
-	csr_ctrl_t		tcu_csr_control_int;
+	csr_ctrl_t		tcu_csr_precontrol_int;
+	csr_ctrl_t		tcu_csr_postcontrol_int;
 	logic [DataWidth-1:0] 	tcu_mtval_int;
 	logic [DataWidth-1:0] 	tcu_mcause_int;
 	logic [DataWidth-1:0] 	tcu_mepc_int;
@@ -257,6 +268,7 @@ module beta_exe_stage import beta_pkg::*; #(
 	
 	logic [DataWidth-1:0]	trap_address_int;
 	logic [1:0]		trap_detected_int;
+
 	
 	beta_csr_regfile csr_reg (
 		.clk_i(clk_i),
@@ -269,28 +281,32 @@ module beta_exe_stage import beta_pkg::*; #(
 		/* Trap Signals */
 		.csr_mtval_i(tcu_mtval_int),
 		.csr_mcause_i(tcu_mcause_int),
-		.csr_mepc_i(tcu_mepc_int),
+		.csr_mepc_i((nextpc_mux_sel_int) ? {tcu_mepc_int[31:2]+30'h1,tcu_mepc_int[1:0]} : tcu_mepc_int) ,	//In case of interrupted branches/jals increase by four the mepc due to csr we timing
 		.csr_sw_int_pend_i(tcu_sw_int_pend_int),
 		.csr_tim_int_pend_i(tcu_tim_int_pend_int),			
 		.csr_ext_int_pend_i(tcu_ext_int_pend_int),
-		.csr_trap_state_i(tcu_trap_state_int),			//MIE,MPIE,MPP
-		.tcu_csr_we_i(tcu_csr_we_int),
+		.csr_trap_state_i(tcu_trap_state_int),								//MIE,MPIE,MPP
+		.tcu_csr_we_i(tcu_csr_we_int & exe_new_instr_i ),	//Only 1 TCU write x instr
 		.csr_mepc_o(csr_mepc_int),
 		/* Trap Signals */
 		.csr_priv_lvl_i(priv_lvl_int),		//Fixed Machine Level 
-		.csr_control_o(tcu_csr_control_int)	
+		.csr_control_o(tcu_csr_precontrol_int)	
 	);
 	
-	//Instantiating Trap Control Unity
-	
+	//Instantiating Trap Control Unit
+
+	//Delete this two lines, they are pointless now
+	assign tcu_csr_postcontrol_int = tcu_csr_precontrol_int;
+	assign tcu_csr_postcontrol_int.mie = tcu_csr_precontrol_int.mie;// & ( ff == 2'b00 );
+
 	beta_trap_control_unit tcu (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
 		.priv_lvl_i(priv_lvl_int[0]),
 		.tcu_next_pc_i(pretrap_next_pc_int),
 		.tcu_fault_instr_i(exe_invalid_instrval_i),
-		.tcu_fault_addr_i(lsu_addr_int),
-		.tcu_csr_control_i(tcu_csr_control_int),
+		.tcu_fault_addr_i(lsu_invalid_addr_int),
+		.tcu_csr_control_i(tcu_csr_postcontrol_int),
 		.tcu_mtval_o(tcu_mtval_int),
 		.tcu_mcause_o(tcu_mcause_int),
 		.tcu_mepc_o(tcu_mepc_int),
@@ -299,11 +315,13 @@ module beta_exe_stage import beta_pkg::*; #(
 		.tcu_ext_int_pend_o(tcu_ext_int_pend_int),
 		.tcu_trap_state_o(tcu_trap_state_int),
 		.tcu_csr_we_o(tcu_csr_we_int),
-		.tcu_sw_intr_i(0),
-		.tcu_tim_intr_i(0),
-		.tcu_ext_intr_i(0),
+		.tcu_sw_intr_i(exe_sw_intr_i),
+		.tcu_tim_intr_i(exe_tim_intr_i),
+		.tcu_ext_intr_i(exe_ext_intr_i),
 		.tcu_instr_exception_i({exe_invalid_instr_i,bju_misalig_pc_int}),
 		.tcu_lsu_exception_i(lsu_misalig_op_int),
+		.tcu_sync_exception_i(exe_control_word_i[24:23]),			//xCALL & xRET
+		.tcu_instr_penality_i(exe_instr_penality_i),
 		.tcu_trap_address_o(trap_address_int),
 		.tcu_trap_detected_o(trap_detected_int),
 		.tcu_halt_o()
@@ -312,7 +330,7 @@ module beta_exe_stage import beta_pkg::*; #(
 	//Result MUX
 	always_comb begin: result_mux
 		if(result_mux_sel_int[0] == 1'b1) begin //JALR and JAL result saving PC + 4 (return address)
-			exe_result_int = exe_pc_i;//incr_pc_int;
+			exe_result_int = ( exe_trap_taken_int[0] ) ? {exe_pc_i[31:2]+30'h1,exe_pc_i[1:0]} : exe_pc_i;	//In case of interrupted jals increase because of csr we timing (TEMPORARY)
 		end
 		else if(result_mux_sel_int[6] == 1'b1) begin //CSR read result
 			exe_result_int = csr_rdata_int;
@@ -354,9 +372,9 @@ module beta_exe_stage import beta_pkg::*; #(
 		endcase;
 		
 		case(trap_nextpc_sel_int)
-			2'b00: exe_next_pc_int = pretrap_next_pc_int;	//Conventional Execution
-			2'b01: exe_next_pc_int = trap_address_int;	//Trapped Execution
-			2'b10: exe_next_pc_int = csr_mepc_int;		//xRET Execution
+			2'b00: exe_next_pc_int = pretrap_next_pc_int;		//Conventional Execution
+			2'b01: exe_next_pc_int = trap_address_int;		//Trapped Execution
+			2'b11: exe_next_pc_int = csr_mepc_int;			//xRET Execution
 			default: exe_next_pc_int = pretrap_next_pc_int;
 		endcase;
 	end

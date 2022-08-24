@@ -60,6 +60,7 @@ module beta_urom import beta_pkg::*; #()(
 	input logic clk_i,
 	input logic rstn_i,
 	input logic[8:0] cu_address_i,
+	input logic[4:0] cu_subaddress_i,
 	input logic invalid_instr_i, 
 
 	output dec_control_word_t control_word_o
@@ -399,7 +400,15 @@ module beta_urom import beta_pkg::*; #()(
 								end
 								
 			/*0x1c0*/ {Major_SYSTEM,Minor_PRIV,1'b0} : 	begin
-									
+									case( cu_subaddress_i )
+									/*0x00*/	Minor_PRIV_ECALL : begin
+												cw_int.exe_sys_priv_en = 2'b01;
+											end
+									/*0x1A*/	Minor_PRIV_MRET : begin
+												cw_int.exe_sys_priv_en = 2'b10;
+											end
+											default: cw_int.exe_sys_priv_en = 2'b00;
+									endcase
 								  	end
 			/*0x1c2*/ {Major_SYSTEM,Minor_CSRRW,1'b0} : begin
 									cw_int.exe_csr_en = 1'b1;

@@ -93,7 +93,7 @@ module beta_bju import beta_pkg::*; #(
 	assign bju_next_pc_int = (&bju_op_i.exe_bju_en) ? bju_selected_data_int : bju_pc_i + bju_selected_data_int - 32'h00000004; //In case of JALR do not add to pc
 	assign bju_branch_taken_o = bju_branch_taken_int;
 	assign bju_misalig_pc_o = bju_misalig_pc_int;
-	assign bju_next_pc_o = ( bju_misalig_pc_int ) ? bju_pc_i + 32'h00000004 : bju_next_pc_int;
+	assign bju_next_pc_o = ( bju_misalig_pc_int ) ? bju_pc_i : bju_next_pc_int;
 
 
 

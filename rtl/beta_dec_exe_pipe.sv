@@ -42,6 +42,7 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 	input dec_control_word_t 	pip_control_word_i,
 	input logic[DataWidth-1:0]	pip_next_pc_i,
 	input logic			pip_new_instr_i,
+	input logic[1:0]		pip_penality_i,
 	
 	/* Illegal Instruction Exception Signals */
 	
@@ -58,6 +59,7 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 	output dec_control_word_t 	pip_control_word_o,
 	output logic[DataWidth-1:0]	pip_next_pc_o,
 	output logic			pip_new_instr_o,	
+	output logic[1:0]		pip_penality_o,
 	
 	/* Illegal Instruction Exception Signals */
 	
@@ -81,10 +83,11 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 	logic			pip_new_instr_int;
 	logic			pip_invalid_instr_int;
 	logic[DataWidth-1:0] 	pip_invalid_instrval_int;
+	logic[1:0]		pip_penality_int;
 
 	/* The new instruction signal lasts for 1 clock cycles and it cannot be stalled */
 
-	always_ff@(posedge clk_i) begin : reg_process
+	always_ff@(posedge clk_i) begin : reg_process		
 		if( rstn_i == 1'b0 | pip_flush_i == 1'b1 ) begin
 			pip_offset12_int <= '0;
 			pip_offset20_int <= '0;
@@ -96,8 +99,9 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 			pip_new_instr_int <= '0;
 			pip_invalid_instr_int <= '0;
 			pip_invalid_instrval_int <= '0;
+			pip_penality_int <= '0;
 		end
-		else if( pip_stall_i == 1'b0 ) begin
+		else if( pip_stall_i == 1'b0 ) begin			//if an interrupt occurs, wait untill it has been correctly handled before overwriting the next
 			pip_offset12_int <= pip_offset12_i;
 			pip_offset20_int <= pip_offset20_i;
 			pip_operand_a_int <= pip_operand_a_i;
@@ -107,6 +111,7 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 			pip_next_pc_int <= pip_next_pc_i;
 			pip_invalid_instr_int <= pip_invalid_instr_i;
 			pip_invalid_instrval_int <= pip_invalid_instrval_i;
+			pip_penality_int <= pip_penality_i;
 		end
 		
 		pip_new_instr_int <= pip_new_instr_i;
@@ -122,6 +127,7 @@ module beta_dec_exe_pipe import beta_pkg::*; #(
 	assign pip_new_instr_o = pip_new_instr_int;
 	assign pip_invalid_instrval_o = pip_invalid_instrval_int;
 	assign pip_invalid_instr_o = pip_invalid_instr_int;
+	assign pip_penality_o = pip_penality_int;
 
 endmodule
 

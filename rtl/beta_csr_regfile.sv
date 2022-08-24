@@ -78,6 +78,12 @@ module beta_csr_regfile import beta_csr_pkg::*; #(
 	// Modify CSRs process
 	
 	always_ff @(posedge clk_i) begin : csr_edit_proc
+	
+		/* An interrupt requested has been detected */
+		csr_mip_int[MIE_MSI_BIT] <= csr_sw_int_pend_i;
+		csr_mip_int[MIE_MTI_BIT] <= csr_tim_int_pend_i;		
+		csr_mip_int[MIE_MEI_BIT] <= csr_ext_int_pend_i;
+			
 		if( rstn_i == 1'b0 ) begin
 			csr_mstatus_int		<= '0;
 			csr_mstatush_int	<= '0;
@@ -89,13 +95,10 @@ module beta_csr_regfile import beta_csr_pkg::*; #(
 			csr_mtval_int		<= '0;
 			csr_mconfigptr_int	<= '0;
 		end
-		else if( tcu_csr_we_i ) begin
+		else if( tcu_csr_we_i ) begin				/* A trap has been captured */
 			csr_mtval_int <= csr_mtval_i;
 			csr_mcause_int <= csr_mcause_i;
 			csr_mepc_int <= csr_mepc_i;
-			csr_mip_int[MIE_MSI_BIT] <= csr_sw_int_pend_i;
-			csr_mip_int[MIE_MTI_BIT] <= csr_tim_int_pend_i;		
-			csr_mip_int[MIE_MEI_BIT] <= csr_ext_int_pend_i;
 			csr_mstatus_int[MSTATUS_MIE_BIT] <= csr_trap_state_i[2];
 			csr_mstatus_int[MSTATUS_MPIE_BIT] <= csr_trap_state_i[1];
 			csr_mstatus_int[MSTATUS_MPP_BIT] <= csr_trap_state_i[0];
@@ -105,7 +108,7 @@ module beta_csr_regfile import beta_csr_pkg::*; #(
 			
 				/*0x300*/ MSTATUS 	: begin 
 								if( csr_op_i[0] & csr_op_i[1] ) begin 	//WRITE
-									csr_mstatus_int[MSTATUS_MIE_BIT] <= csr_wdata_i[1];  
+									csr_mstatus_int[MSTATUS_MIE_BIT] <= csr_wdata_i[3];  
 									csr_mstatus_int[MSTATUS_UBE_BIT] <= 1'b0; //csr_wdata_i[6];  
 									csr_mstatus_int[MSTATUS_MPIE_BIT] <= csr_wdata_i[7];  
 									csr_mstatus_int[MSTATUS_MPP_BIT] <= csr_wdata_i[11];
@@ -113,10 +116,10 @@ module beta_csr_regfile import beta_csr_pkg::*; #(
 									csr_mstatus_int[MSTATUS_TW_BIT] <= csr_wdata_i[21]; 
 								end
 								else if( csr_op_i[0] ) begin		//SET
-									csr_mstatus_int <= csr_mstatus_int | {csr_wdata_i[21],csr_wdata_i[17],csr_wdata_i[11],csr_wdata_i[7],1'b0,csr_wdata_i[1]};  
+									csr_mstatus_int <= csr_mstatus_int | {csr_wdata_i[21],csr_wdata_i[17],csr_wdata_i[11],csr_wdata_i[7],1'b0,csr_wdata_i[3]};  
 								end
 								else if( csr_op_i[1] ) begin		//RESET
-									csr_mstatus_int <= csr_mstatus_int & ~({csr_wdata_i[21],csr_wdata_i[17],csr_wdata_i[11],csr_wdata_i[7],1'b0,csr_wdata_i[1]});  
+									csr_mstatus_int <= csr_mstatus_int & ~({csr_wdata_i[21],csr_wdata_i[17],csr_wdata_i[11],csr_wdata_i[7],1'b0,csr_wdata_i[3]});  
 								end
 						
 							  end
@@ -273,6 +276,7 @@ module beta_csr_regfile import beta_csr_pkg::*; #(
 	assign csr_control_o.machine_endianess = csr_mstatush_int;
 	assign csr_control_o.user_endianess = csr_mstatus_int[MSTATUS_UBE_BIT];
 	assign csr_control_o.mtvec = csr_mtvec_int;
+	assign csr_control_o.mepc = csr_mepc_int;
 	assign csr_control_o.ext_int = {csr_mip_int[MIE_MEI_BIT], csr_mie_int[MIE_MEI_BIT]};
 	assign csr_control_o.tim_int = {csr_mip_int[MIE_MTI_BIT], csr_mie_int[MIE_MTI_BIT]};
 	assign csr_control_o.soft_int = {csr_mip_int[MIE_MSI_BIT], csr_mie_int[MIE_MSI_BIT]};

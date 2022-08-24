@@ -48,9 +48,13 @@ module beta_top import beta_pkg::*; #(
 	//Generic & not classified atm
 
 	output logic[DataWidth-1:0] 	result_o,
-	output logic 			alu_op_end_o
+	output logic 			alu_op_end_o,
 
 	//Interrupt and exception signals
+	
+	input logic 			sw_intr_i,
+	input logic			tim_intr_i,
+	input logic			ext_intr_i
 	
 );
 
@@ -69,7 +73,7 @@ module beta_top import beta_pkg::*; #(
 	logic			exe_branch_taken_int;
 	logic			dec_invalid_instr_int;
 	logic[DataWidth-1:0] 	dec_invalid_instrval_int;
-	logic			exe_trap_taken_int;
+	logic[1:0]		exe_trap_taken_int;
 	
 	logic[DataWidth-1:0]	next_pc_int;
 	logic			alu_op_end_int;
@@ -83,12 +87,15 @@ module beta_top import beta_pkg::*; #(
 	logic[DataWidth-1:0]	instr_addr_int;
 	logic[DataWidth-1:0]	instr_int;
 	logic 			instr_req_int;
+	logic[1:0]		if_penality_int;
 
 	/* Instruction fetch to Decode Pipe */
 
 	logic			pip0_new_instr_int;
 	logic[DataWidth-1:0]	pip0_instr_int;
 	logic[DataWidth-1:0]	pip0_next_pc_int;
+	logic[1:0]		pip0_penality_int;
+	
 
 	/* Decode to Execution Pipe */
 
@@ -102,6 +109,7 @@ module beta_top import beta_pkg::*; #(
 	logic			pip1_new_instr_int;
 	logic			pip1_invalid_instr_int;
 	logic[DataWidth-1:0] 	pip1_invalid_instrval_int;
+	logic[1:0]		pip1_penality_int;
 	
 	//Inter stages sync signals
 
@@ -158,8 +166,10 @@ module beta_top import beta_pkg::*; #(
 		.if_instr_o(instr_int),
 		.if_new_instr_o(new_instr_int),
 		.if_ctrl_hazard_flag_i(pcu_ctrl_hazard_flag_int[0] & (pcu_ctrl_hazard_flag_int[1] | exe_branch_taken_int)),
+		.if_trap_hazard_flag_i(pcu_trap_hazard_flag_int[1] | pcu_trap_hazard_flag_int[0]),
 		
-		.if_stage_busy_o(if_stage_busy_int)
+		.if_stage_busy_o(if_stage_busy_int),
+		.if_penality_o(if_penality_int)
 	);
 
 	beta_if_dec_pipe #(
@@ -172,11 +182,13 @@ module beta_top import beta_pkg::*; #(
 
 		.pip_instr_i(instr_int),
 		.pip_new_instr_i(new_instr_int),	
+		.pip_penality_i(if_penality_int),
 
 		/* Output Decode Stage signals */
 
 		.pip_instr_o(pip0_instr_int),
 		.pip_new_instr_o(pip0_new_instr_int),
+		.pip_penality_o(pip0_penality_int),
 
 		/* Others */
 
@@ -241,6 +253,7 @@ module beta_top import beta_pkg::*; #(
 
 		.pip_invalid_instr_i(dec_invalid_instr_int),
 		.pip_invalid_instrval_i(dec_invalid_instrval_int),
+		.pip_penality_i(pip0_penality_int),
 
 		/* Output Execution Stage signals */
 
@@ -256,10 +269,11 @@ module beta_top import beta_pkg::*; #(
 		
 		.pip_invalid_instr_o(pip1_invalid_instr_int),
 		.pip_invalid_instrval_o(pip1_invalid_instrval_int),
+		.pip_penality_o(pip1_penality_int),
 
 		/* Pipeline Control Unit signals*/
 	
-		.pip_stall_i(pcu_pip1_stall_int),
+		.pip_stall_i(pcu_pip1_stall_int | (~pcu_pip1_stall_int & pcu_trap_hazard_flag_int[0] & ~reg_wr_en_int)),
 		.pip_flush_i(pcu_pip1_flush_int)
 	);
 
@@ -277,7 +291,7 @@ module beta_top import beta_pkg::*; #(
 		.exe_pc_i(pip1_next_pc_int),
 		.exe_offset12_i(pip1_offset12_int),
 		.exe_offset20_i(pip1_offset20_int),
-		.exe_control_word_i(pip1_control_word_int[22:0]),
+		.exe_control_word_i(pip1_control_word_int[24:0]),
 		
 		.exe_new_instr_i(pip1_new_instr_int),	
 
@@ -291,10 +305,15 @@ module beta_top import beta_pkg::*; #(
 		.exe_invalid_instr_i(pip1_invalid_instr_int),
 		.exe_invalid_instrval_i(pip1_invalid_instrval_int),
 
+		.exe_instr_penality_i(pip1_penality_int),
 		.dec_stage_busy_i(dec_stage_busy_int),
 		.exe_stage_busy_o(exe_stage_busy_int),
 		.exe_branch_taken_o(exe_branch_taken_int),
 		.exe_trap_taken_o(exe_trap_taken_int),
+		
+		.exe_sw_intr_i(sw_intr_i),
+		.exe_tim_intr_i(tim_intr_i),
+		.exe_ext_intr_i(ext_intr_i),
 
 		.rdata_ready_i(rdata_ready_i),
 		.rdata_valid_i(rdata_valid_i),
@@ -342,6 +361,7 @@ module beta_top import beta_pkg::*; #(
 	
 	logic[1:0] pcu_exe_bju_en_int =  pip1_control_word_int.exe_bju_en;
 	logic[1:0] pcu_ctrl_hazard_flag_int;
+	logic[1:0] pcu_trap_hazard_flag_int;
 	
 	/* Control Hazard Signals end*/
 
@@ -392,6 +412,7 @@ module beta_top import beta_pkg::*; #(
 	
 		.pcu_exe_trap_flag_i(exe_trap_taken_int),
 		.pcu_exe_bju_en_i(pcu_exe_bju_en_int),
+		.pcu_trap_hazard_flag_o(pcu_trap_hazard_flag_int),
 		.pcu_ctrl_hazard_flag_o(pcu_ctrl_hazard_flag_int)
 	);
 

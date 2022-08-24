@@ -120,6 +120,7 @@ module beta_dec_stage import beta_pkg::*; #(
 	logic [XLEN-1:0] 	rs1_data_int;
 	logic [XLEN-1:0] 	rs2_data_int;
 	logic [8:0] 		cu_address_int;
+	logic [4:0] 		cu_subaddr_int;
 	logic 			invalid_instr_int;
 	logic [4:0] 		rd_addr_int;
 
@@ -180,6 +181,8 @@ module beta_dec_stage import beta_pkg::*; #(
 		.imm20_o(imm20_int),
 
 		.cu_addr_o(cu_address_int),
+		.cu_subaddr_o(cu_subaddr_int),
+
 
 		.invalid_instr_o(invalid_instr_int)
 	);
@@ -199,11 +202,12 @@ module beta_dec_stage import beta_pkg::*; #(
 		.rs2_data_o(rs2_data_int)
 
 	);
-
+	
 	beta_urom urom (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
 		.cu_address_i(cu_address_int),
+		.cu_subaddress_i(cu_subaddr_int),
 		.invalid_instr_i(invalid_instr_int),
 
 		.control_word_o(control_word_int)

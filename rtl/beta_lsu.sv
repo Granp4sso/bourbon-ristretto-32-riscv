@@ -48,6 +48,7 @@ module beta_lsu import beta_pkg::*; #(
 	/*Misaligned Address Exception*/
 	
 	output logic[1:0]		lsu_misalig_op_o,
+	output logic[AddressWidth-1:0]	lsu_invalid_addr_o,
 
 	/*Exe Control Unit Port*/
 	input  logic[1:0] 		lsu_op_size_i,
@@ -93,6 +94,8 @@ module beta_lsu import beta_pkg::*; #(
 		lsu_misalig_op_int[1] = ( lsu_op_i == MEM_STORE_OP ) ? lsu_misalig_flag_int : 1'b0;
 	
 	end
+	
+	assign lsu_invalid_addr_o = evaluating_addr_int;
 
 	/*Read Data Memory Protocol*/
 

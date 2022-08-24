@@ -58,7 +58,9 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 	output logic[DataWidth-1:0]	if_fu_instr_o,
 	output logic			if_fu_new_instr_o,
 	output logic			if_fu_stage_busy_o,
+	output logic[1:0]		if_fu_penality_o,		//2'b00 No Penality, 2'b01 Ctrl Penality, 2'b10 Trap penality
 	
+	input logic			if_fu_trap_hazard_flag_i,
 	input logic			if_fu_ctrl_hazard_flag_i
 );
 
@@ -68,6 +70,10 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 	logic				new_instr_int;
 
 	logic[imem_fsm_bsize-1:0] 	imem_state_int;
+	
+	//This FF is used to record the occurrence of a trap. A NOP is injected into the pipe until a new instruction is fetched
+	
+	logic 				fu_trap_hazard_ff_int;
 
 	always_ff@(posedge clk_i) begin: imem_protocol
 		if(rstn_i == 1'b0) begin
@@ -75,6 +81,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 			if_stage_busy_int <= 1'b0;
 			new_instr_int <= 1'b0;
 			imem_state_int <= IMEM_IDLE;
+			fu_trap_hazard_ff_int <= 1'b0;
 		end
 		else begin
 			case(imem_state_int)
@@ -84,6 +91,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 					if_stage_busy_int <= 1'b1;
 					instr_req_int <= 1'b1;
 					imem_state_int <= IMEM_WRDY;
+					fu_trap_hazard_ff_int <= 1'b0;
 				end
 				new_instr_int <= 1'b0;
 			end
@@ -98,7 +106,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 			IMEM_WVLD: begin
 				if(if_fu_instr_valid_i) begin
 					if_stage_busy_int <= 1'b0;
-					instr_int <= ( if_fu_ctrl_hazard_flag_i )? 32'h00000013 : if_fu_instr_rdata_i;	//inject a NOP if a ctrl hazard is detected
+					instr_int <= if_fu_instr_rdata_i;
 					new_instr_int <= 1'b1;
 					imem_state_int <= IMEM_IDLE;		
 				end
@@ -107,9 +115,13 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 			endcase
 			
 		end
+		
+		if( if_fu_trap_hazard_flag_i ) begin fu_trap_hazard_ff_int <= 1'b1; end
 	end
 
-	assign if_fu_instr_o = instr_int;
+	assign if_fu_instr_o = ( if_fu_ctrl_hazard_flag_i | if_fu_trap_hazard_flag_i /*| fu_trap_hazard_ff_int*/ ) ? 32'h00000013 : instr_int;  //inject a NOP if a ctrl hazard or a trap hazard is detected
+	assign if_fu_penality_o[0] = ( if_fu_ctrl_hazard_flag_i ) ? 1'b1 : 1'b0;
+	assign if_fu_penality_o[1] = ( if_fu_trap_hazard_flag_i ) ? 1'b1 : 1'b0;
 	assign if_fu_instr_req_o = instr_req_int;
 	assign if_fu_stage_busy_o = if_stage_busy_int;
 	assign if_fu_new_instr_o = new_instr_int;

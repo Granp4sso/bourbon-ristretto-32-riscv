@@ -59,8 +59,9 @@ module beta_exe_cu import beta_pkg::*; #(
 	
 	/*Trap Detection Port*/
 	input  logic [1:0]	execu_trap_detected_i,
+	input  logic 		execu_trap_ret_i,
 	output logic [1:0]	execu_trap_nextpc_sel_o,
-	output logic		execu_trap_taken_o,
+	output logic [1:0]	execu_trap_taken_o,
 
 	/*Selection Path Port*/
 	output logic[6:0] 	execu_result_sel_o,
@@ -106,7 +107,7 @@ module beta_exe_cu import beta_pkg::*; #(
 	always_comb begin: TRAP_Protocol
 	
 		execu_trap_nextpc_sel_o[0] = execu_trap_taken_int[1] | execu_trap_taken_int[0];
-		execu_trap_nextpc_sel_o[1] = 1'b0;	//This bit will serve for the xRET instruction
+		execu_trap_nextpc_sel_o[1] = execu_trap_ret_i;	
 	end
 	
 	//Arithmetic & Logic Unit Protocol
@@ -242,9 +243,13 @@ module beta_exe_cu import beta_pkg::*; #(
 	
 	assign multi_cycle_op = ( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 ) | execu_control_word_i.exe_mem_op_en;	//This signal will depend on the triggering event signals
 	assign execu_reg_wr_en_int = mc_write_latch | (~multi_cycle_op & new_instr_latch & execu_control_word_i.exe_reg_wr_en ) & ~execu_trap_taken_int[1]; //(Exception Condition 1)
-	assign event_flag = ( shift_latch == 2'b10 ) | 	( lsu_latch == 2'b10 )	;				
-	assign execu_trap_taken_int = {execu_trap_detected_i[1] | (trap_latch[1] & ~execu_new_instr_i), execu_trap_detected_i[0] | (trap_latch[0] & ~execu_new_instr_i)}; //in this way we avoid 1 clk delay for the trap_taken to reset
-
+	assign event_flag = ( shift_latch == 2'b10 ) | 	( lsu_latch == 2'b10 )	;
+	
+	//in this way we avoid 1 clk delay for the trap_taken to reset
+	//assign execu_trap_taken_int[1] = execu_trap_detected_i[1] | trap_latch[1] ;//& ~execu_new_instr_i);
+	//assign execu_trap_taken_int[0] = trap_latch[0] ;
+	assign execu_trap_taken_int[1] = execu_trap_detected_i[1] | (trap_latch[1] & ~execu_new_instr_i) ;//& ~execu_new_instr_i);  
+	assign execu_trap_taken_int[0] = (execu_trap_detected_i[0] & execu_new_instr_i) | (trap_latch[0] & ~execu_new_instr_i ) ;  
 	always_ff@(posedge clk_i) begin: latch_events
 		if(rstn_i == 1'b0) begin
 			//event_latch <= 2'b00;
@@ -272,8 +277,22 @@ module beta_exe_cu import beta_pkg::*; #(
 			else if( lsu_latch == 2'b11 ) begin lsu_latch <= 2'b00; end 					//Reset
 			
 			// Trap occurred event handler: When a new instruction is received upon a trap, reset the trap latch 
-			if( (execu_trap_detected_i != TCU_NOTRAP) & trap_latch == TCU_NOTRAP) begin trap_latch <= execu_trap_detected_i; end
-			else if( (trap_latch != TCU_NOTRAP) & execu_new_instr_i ) begin trap_latch <= TCU_NOTRAP; end 
+			/*if( (execu_trap_detected_i != TCU_NOTRAP) & trap_latch == TCU_NOTRAP & execu_new_instr_i ) begin trap_latch <= execu_trap_detected_i; end
+			else if( (trap_latch[1]) & execu_new_instr_i ) begin trap_latch <= TCU_NOTRAP; end	
+			else if( (trap_latch[0]) ) begin
+				if( ~multi_cycle_op ) begin trap_latch <= TCU_NOTRAP; end			//An interrupt will wait until the mc bit is low (e.g. a comb instruction or the end of a seq)
+			end */
+			
+			if( (execu_trap_detected_i[1] ) & ~trap_latch[1] & execu_new_instr_i ) begin trap_latch[1] <= execu_trap_detected_i[1]; end
+			else if( (trap_latch[1]) & execu_new_instr_i ) begin trap_latch[1] <= 1'b0; end	
+			
+			if( (execu_trap_detected_i[0] ) & ~trap_latch[0] & execu_new_instr_i ) begin trap_latch[0] <= execu_trap_detected_i[0]; end
+			else if( (trap_latch[0]) & execu_new_instr_i & ~multi_cycle_op ) begin //SC instructions
+				trap_latch[0] <= 1'b0;			
+			end 
+			else if( (trap_latch[0]) & (execu_new_instr_i & ~new_instr_latch) & multi_cycle_op ) begin //MC instructions
+				trap_latch[0] <= 1'b0;			
+			end 
 			
 			// Write signal Event Handler : An exception will abort any Multicycle/singlecycle operation
 			if( multi_cycle_op ) begin 
@@ -315,7 +334,7 @@ module beta_exe_cu import beta_pkg::*; #(
 	assign execu_lsu_op_o = execu_lsu_op_int;
 	assign execu_lsu_en_o = execu_lsu_en_int;
 	
-	assign execu_trap_taken_o = execu_trap_taken_int[1] | execu_trap_taken_int[0];
+	assign execu_trap_taken_o = execu_trap_taken_int;
 
 	assign execu_result_sel_o = execu_result_sel_int;
 	assign execu_nextpc_sel_o = execu_nextpc_sel_int;

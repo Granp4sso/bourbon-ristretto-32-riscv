@@ -75,8 +75,9 @@ module beta_pipeline_control_unit import beta_pkg::*; #(
 	
 	/* Control Hazard Signals */
 	
-	input logic			pcu_exe_trap_flag_i,
+	input logic[1:0]		pcu_exe_trap_flag_i,
 	input logic[1:0]		pcu_exe_bju_en_i,
+	output logic[1:0]		pcu_trap_hazard_flag_o,
 	output logic[1:0]		pcu_ctrl_hazard_flag_o
 	
 );
@@ -107,7 +108,7 @@ module beta_pipeline_control_unit import beta_pkg::*; #(
 	
 	assign pcu_ifs_fetch_en_int = ~fetch_sync_latch & ~pcu_ifs_busy_i & ~pcu_pip0_stall_int;		 //& ~pcu_pip1_stall_int;
 	assign pcu_pip0_stall_int = (pcu_ifs_busy_i & pcu_decs_busy_i);
-	assign pcu_pip1_stall_int = pcu_exes_busy_i;
+	assign pcu_pip1_stall_int = pcu_exes_busy_i ;
 	
 
 	/*
@@ -171,7 +172,8 @@ module beta_pipeline_control_unit import beta_pkg::*; #(
 		will need an extra bit in order to separate them from jumps
 	*/
 	
-	assign pcu_ctrl_hazard_flag_o = {( pcu_exe_bju_en_i != 2'b01 ),( pcu_exe_bju_en_i != 2'b00 ) | pcu_exe_trap_flag_i};	//01 Branches, 11 Jumps/Traps
+	assign pcu_ctrl_hazard_flag_o = {( pcu_exe_bju_en_i != 2'b01 ),( pcu_exe_bju_en_i != 2'b00 )};	//01 Branches, 11 Jumps
+	assign pcu_trap_hazard_flag_o = pcu_exe_trap_flag_i;						//01 Interrupts, 10 Exceptions
 	
 	assign pcu_ifs_fetch_en_o = pcu_ifs_fetch_en_int;
 	assign pcu_pip0_stall_o = pcu_pip0_stall_int;

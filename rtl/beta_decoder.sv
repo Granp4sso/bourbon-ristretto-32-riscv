@@ -31,6 +31,7 @@ module beta_decoder #()
 	output logic[19:0] imm20_o,
 
 	output logic[8:0] cu_addr_o,
+	output logic[4:0] cu_subaddr_o,
 
 	output logic invalid_instr_o
 	
@@ -86,6 +87,7 @@ module beta_decoder #()
 	assign imm20_o = imm20_int;
 
 	assign cu_addr_o = (invalid_instr_int) ? '1 : cu_addr_int; //Temporary fix, it will be handled by exception paths (outside)
+	assign cu_subaddr_o = {imm12_int[9:8],imm12_int[2:0]};
 	assign invalid_instr_o = invalid_instr_int;
 
 	initial assign funct7_mask_bit_int = 0;
