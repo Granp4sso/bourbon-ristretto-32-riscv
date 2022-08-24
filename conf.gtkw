@@ -1,23 +1,24 @@
 [*]
-[*] GTKWave Analyzer v3.3.86 (w)1999-2017 BSI
-[*] Tue Jun 28 13:11:24 2022
+[*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
+[*] Wed Aug 24 10:13:16 2022
 [*]
-[dumpfile] "/home/stefano/Desktop/PhD/PhD_Projects/Architectures/32-bit_RISCV_Core/trace.vcd"
-[dumpfile_mtime] "Tue Jun 28 13:10:53 2022"
-[dumpfile_size] 42922
-[savefile] "/home/stefano/Desktop/PhD/PhD_Projects/Architectures/32-bit_RISCV_Core/conf.gtkw"
-[timestart] 77
-[size] 1360 740
-[pos] -1428 -28
-*-4.473289 50 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[dumpfile] "/home/stefano/Desktop/Projects/Bourbon/trace.vcd"
+[dumpfile_mtime] "Wed Aug 24 10:12:50 2022"
+[dumpfile_size] 49706292
+[savefile] "/home/stefano/Desktop/Projects/Bourbon/conf.gtkw"
+[timestart] 445
+[size] 1846 1016
+[pos] -1 -1
+*-6.473289 823 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] TOP.
 [treeopen] TOP.beta_top.
 [treeopen] TOP.beta_top.dec_stage.
 [treeopen] TOP.beta_top.exe_stage.
-[sst_width] 223
-[signals_width] 246
+[treeopen] TOP.beta_top.if_stage.
+[sst_width] 233
+[signals_width] 314
 [sst_expanded] 1
-[sst_vpaned_height] 379
+[sst_vpaned_height] 568
 @28
 TOP.clk_i
 TOP.rstn_i
@@ -78,6 +79,11 @@ TOP.beta_top.dec_stage.regfile.regfile_data_int(7)[31:0]
 TOP.beta_top.dec_stage.regfile.regfile_data_int(8)[31:0]
 TOP.beta_top.dec_stage.regfile.regfile_data_int(9)[31:0]
 TOP.beta_top.dec_stage.regfile.regfile_data_int(10)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(11)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(12)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(13)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(14)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(15)[31:0]
 @28
 [color] 1
 TOP.beta_top.if_stage.if_stage_busy_o
@@ -92,8 +98,6 @@ TOP.beta_top.if_stage.if_new_instr_o
 [color] 7
 TOP.beta_top.dec_stage.new_instruction_latch
 TOP.beta_top.pcu.ifs_triggered_int
-TOP.beta_top.pcu.decs_triggered_int
-TOP.beta_top.pcu.exes_triggered_int
 TOP.beta_top.pcu.pcu_ifs_busy_i
 TOP.beta_top.pcu.pcu_decs_busy_i
 TOP.beta_top.pcu.pcu_exes_busy_i
@@ -106,9 +110,13 @@ TOP.beta_top.pipe0.pip_instr_o[31:0]
 @28
 [color] 3
 TOP.beta_top.pipe0.pip_new_instr_o
-@23
-[color] 2
-TOP.beta_top.pipe1.pip_control_word_o[24:0]
+TOP.beta_top.exe_stage.exe_cu.execu_new_instr_i
+TOP.beta_top.exe_stage.exe_cu.execu_reg_wr_en_int
+TOP.beta_top.exe_stage.exe_cu.new_instr_latch
+TOP.beta_top.exe_stage.exe_cu.new_instr_pend_latch
+TOP.beta_top.exe_stage.exe_cu.execu_exe_stage_busy_int
+TOP.beta_top.exe_stage.exe_cu.multi_cycle_op
+@22
 [color] 2
 TOP.beta_top.pipe1.pip_next_pc_o[31:0]
 [color] 2
@@ -121,5 +129,50 @@ TOP.beta_top.pipe1.pip_operand_a_o[31:0]
 TOP.beta_top.pipe1.pip_operand_b_o[31:0]
 [color] 2
 TOP.beta_top.pipe1.pip_rd_addr_o[4:0]
+@28
+TOP.beta_top.pcu.pcu_r_op_i[1:0]
+@22
+TOP.beta_top.pcu.pcu_dec_rsrc1_i[4:0]
+TOP.beta_top.pcu.pcu_dec_rsrc2_i[4:0]
+TOP.beta_top.pcu.pcu_exe_rd_i[4:0]
+@28
+TOP.beta_top.pcu.pcu_exe_wreq_i
+TOP.beta_top.pcu.pcu_dec_multi_cycle_i
+TOP.beta_top.pcu.pcu_exe_multi_cycle_i
+TOP.beta_top.pcu_dec_mem_cond_int
+TOP.beta_top.pcu_dec_shift_cond_int
+TOP.beta_top.pcu_dec_shift_size_int
+TOP.beta_top.pcu_dec_multi_cycle_int
+TOP.beta_top.pcu.data_hazard_flag_int
+TOP.beta_top.pcu.data_hazard_flag_o
+TOP.beta_top.pcu.data_hazard_src_o[1:0]
+TOP.beta_top.pcu.pcu_ctrl_hazard_flag_o[1:0]
+@29
+[color] 6
+TOP.beta_top.exe_stage.tcu.tcu_instr_penality_i[1:0]
+@28
+[color] 6
+TOP.beta_top.if_stage.fu.fu_trap_hazard_ff_int
+[color] 6
+TOP.beta_top.if_stage.fu.if_fu_trap_hazard_flag_i
+[color] 6
+TOP.beta_top.exe_stage.exe_cu.execu_new_instr_i
+[color] 6
+TOP.beta_top.exe_stage.exe_cu.execu_trap_detected_i[1:0]
+[color] 6
+TOP.beta_top.exe_stage.exe_cu.trap_latch[1:0]
+[color] 6
+TOP.beta_top.exe_stage.csr_reg.tcu_csr_we_i
+[color] 6
+TOP.beta_top.exe_stage.tcu.tcu_trap_detected_o[1:0]
+[color] 6
+TOP.beta_top.exe_stage.exe_cu.execu_trap_nextpc_sel_o[1:0]
+[color] 6
+TOP.beta_top.exe_stage.exe_trap_taken_o[1:0]
+@22
+[color] 6
+TOP.beta_top.exe_stage.pretrap_next_pc_int[31:0]
+[color] 6
+TOP.beta_top.exe_stage.exe_next_pc_o[31:0]
 [pattern_trace] 1
 [pattern_trace] 0

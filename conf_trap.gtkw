@@ -1,0 +1,176 @@
+[*]
+[*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
+[*] Sun Aug 21 14:42:36 2022
+[*]
+[dumpfile] "/home/stefano/Desktop/Projects/Bourbon/trace.vcd"
+[dumpfile_mtime] "Sun Aug 21 14:41:36 2022"
+[dumpfile_size] 99084
+[savefile] "/home/stefano/Desktop/Projects/Bourbon/conf_trap.gtkw"
+[timestart] 8
+[size] 1920 1043
+[pos] 1845 0
+*-7.473289 230 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] TOP.
+[treeopen] TOP.beta_top.
+[treeopen] TOP.beta_top.dec_stage.
+[treeopen] TOP.beta_top.exe_stage.
+[sst_width] 233
+[signals_width] 246
+[sst_expanded] 1
+[sst_vpaned_height] 666
+@28
+TOP.clk_i
+TOP.rstn_i
+@22
+[color] 2
+TOP.instr_addr_o[31:0]
+[color] 2
+TOP.instr_rdata_i[31:0]
+@28
+[color] 2
+TOP.instr_ready_i
+[color] 2
+TOP.instr_req_o
+[color] 2
+TOP.instr_valid_i
+TOP.beta_top.dec_stage.invalid_instr_int
+@22
+[color] 3
+TOP.rdata_addr_o[31:0]
+[color] 3
+TOP.rdata_data_i[31:0]
+@28
+[color] 3
+TOP.rdata_ready_i
+[color] 3
+TOP.rdata_req_o
+@22
+[color] 3
+TOP.rdata_strb_o[3:0]
+@28
+[color] 3
+TOP.rdata_valid_i
+@22
+[color] 3
+TOP.wdata_addr_o[31:0]
+[color] 3
+TOP.wdata_data_o[31:0]
+@28
+[color] 3
+TOP.wdata_ready_i
+[color] 3
+TOP.wdata_req_o
+@22
+[color] 3
+TOP.wdata_strb_o[3:0]
+@28
+[color] 3
+TOP.wdata_valid_i
+@22
+TOP.result_o[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(0)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(1)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(2)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(3)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(4)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(5)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(6)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(7)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(8)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(9)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(10)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(11)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(12)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(13)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(14)[31:0]
+TOP.beta_top.dec_stage.regfile.regfile_data_int(15)[31:0]
+@28
+[color] 3
+TOP.beta_top.exe_stage.csr_reg.csr_mie_int[2:0]
+[color] 3
+TOP.beta_top.exe_stage.csr_reg.csr_mip_int[2:0]
+@22
+[color] 3
+TOP.beta_top.exe_stage.csr_reg.csr_mtval_int[31:0]
+[color] 3
+TOP.beta_top.exe_stage.csr_reg.csr_mtvec_int[31:0]
+[color] 3
+TOP.beta_top.exe_stage.csr_reg.csr_mcause_int[31:0]
+[color] 3
+TOP.beta_top.exe_stage.csr_reg.csr_mepc_int[31:0]
+[color] 3
+TOP.beta_top.exe_stage.csr_reg.csr_mstatus_int[5:0]
+@28
+[color] 2
+TOP.beta_top.exe_stage.tcu.priv_lvl_i
+@22
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_csr_control_i[107:0]
+@28
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_csr_we_int
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_csr_we_o
+@22
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_fault_addr_i[31:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_fault_instr_i[31:0]
+@28
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_halt_o
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_instr_exception_i[1:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_lsu_exception_i[1:0]
+@22
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_mcause_int[4:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_mcause_o[31:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_mepc_int[31:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_mepc_o[31:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_trap_address_int[31:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_mtval_int[31:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_mtval_o[31:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_next_pc_i[31:0]
+@28
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_sw_int_pend_int
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_sw_int_pend_o
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_sw_intr_i
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_tim_int_pend_int
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_tim_int_pend_o
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_tim_intr_i
+@29
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_ext_int_pend_int
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_ext_int_pend_o
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_ext_intr_i
+@22
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_trap_address_o[31:0]
+@28
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_trap_detected_int[1:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_trap_detected_o[1:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_trap_state_int[2:0]
+[color] 2
+TOP.beta_top.exe_stage.tcu.tcu_trap_state_o[2:0]
+[pattern_trace] 1
+[pattern_trace] 0
