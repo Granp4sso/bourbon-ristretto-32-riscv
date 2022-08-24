@@ -78,7 +78,7 @@ parameter integer unsigned MIE_MEI_BIT = 	 2;
 
 parameter logic[31:0] MTVEC_MODE_D = 32'h00000000;
 parameter logic[31:0] MTVEC_MODE_V = 32'h00000001;
-parameter logic[31:0] MTVEC_BASE =   32'h00000000;		//Still to be decided
+parameter logic[31:0] MTVEC_BASE =   32'h00000008;		//0x00 is the empty address, while 0x04 is the reset handler
 
 
 typedef struct packed {
@@ -89,6 +89,7 @@ typedef struct packed {
 	logic [1:0]  tim_int;		//Bit 0 is for mie.MTIE, bit 1 is for mie.MTIP
 	logic [1:0]  ext_int;		//Bit 0 is for mie.MEIE, bit 1 is for mie.MEIP
 	logic [31:0] mtvec;		//Signal driving the trap base address and addressing mode (vectored or direct)
+	logic [31:0] mepc;		//Signal driving the exception program counter in order to correctly enforce the ret behaviour
 	logic mpp;			//It encodes the mstatus MPP bit.
 	logic mpie;	
 	logic mie;			//It encodes the MIE and SIE bits. SIE is not supported, so the signal is 1 bit wide.

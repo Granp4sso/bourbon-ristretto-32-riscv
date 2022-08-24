@@ -31,6 +31,7 @@ typedef struct packed {
 
 	//Ex Stage control signals
 	
+	logic[1:0]	exe_sys_priv_en;			//Enables priv opcodes: 00 -> none, 01 -> ECALL trap, 10 -> return from trap (MRET)
 	logic 		exe_reg_wr_en;				//Enables reg write
 	
 	//CSR related signals
@@ -156,6 +157,15 @@ parameter logic[2:0] Minor_CSRRC =	3'b011;
 parameter logic[2:0] Minor_CSRRWI =	3'b101;
 parameter logic[2:0] Minor_CSRRSI =	3'b110;
 parameter logic[2:0] Minor_CSRRCI =	3'b111;
+
+/*PRIV Subcodes: Immediate[29:28],Immediate[22:20]*/
+
+parameter logic[4:0] Minor_PRIV_ECALL =		5'b00000;	//0x00
+parameter logic[4:0] Minor_PRIV_EBREAK =	5'b00001;	//0x01
+parameter logic[4:0] Minor_PRIV_URET =		5'b00010;	//0x02
+parameter logic[4:0] Minor_PRIV_SRET =		5'b01010;	//0x0A
+parameter logic[4:0] Minor_PRIV_MRET =		5'b11010;	//0x1A
+parameter logic[4:0] Minor_PRIV_WFI =		5'b01101;	//0x0D
 
 endpackage;
 

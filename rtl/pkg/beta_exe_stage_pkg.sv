@@ -13,7 +13,8 @@ export *::*;
 
 typedef struct packed {
 	//Control signals coming from the decode unit and handled by the execution stage control domain
-
+	
+	logic[1:0]	exe_sys_priv_en;			//Enables priv opcodes: 00 -> none, 01 -> ECALL trap, 10 -> return from trap (MRET)
 	logic 		exe_reg_wr_en;				//Enables reg write
 	
 	//CSR related signals

@@ -15,6 +15,10 @@ parameter logic[1:0] LSU_NOTRAP			= 2'b00;
 parameter logic[1:0] LSU_MISALIG_LOAD 		= 2'b01;
 parameter logic[1:0] LSU_MISALIG_STORE		= 2'b10;
 
+parameter logic[1:0] SYNC_NOTRAP		= 2'b00;
+parameter logic[1:0] SYNC_ECALL	 		= 2'b01;
+parameter logic[1:0] SYNC_MRET			= 2'b10;
+
 
 typedef enum logic[4:0] {
 	MSW_INT 	= 5'h13,
