@@ -1,9 +1,48 @@
 `include "pkg/beta_csr_pkg.sv"
 
 /*
-	8/08/2022
+
+	Control & Status Registers Regfile v0.3 30/09/2022
+
+	******|| INSTANTIABLES 	||******
+
+	******|| PARAMETERS 	||******
+
+	-DataWidth :		Width of data lines
+	-AddrWidth :		Width of addresses
 	
-	For the moment I define a logic[DataWidth-1:0] for each CSR.
+	******|| INTERFACES 	||******
+
+	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
+	-csr_addr_i:		CSR requested address by a CSR Op Code
+	-csr_wdata_i:		CSR data to be written by CSR Op Code 
+	-csr_op_i:		CSR Requested operation (Read, Write, Set, Reset)
+	-csr_en_i;		CSR Enable signal (usually driven high by CSR Opcodes) 	
+	-csr_rdata_o:		CSR read data from csr_addr_i requested by CSR Opcodes
+	-csr_priv_lvl_i:	Hart privilege level (atm it is unused because only M mode is supported) (IT IS NOT USED AT THE MOMENT)
+	-csr_mtval_i:		Trap additional value (e.g. faulting instruction which caused an illegal instruction exception). It is sent to the trap control unit
+	-csr_mcause_i:		Trap cause (e.g. sw interrupt, illegal instruction, misaligned load etc..). It is sent to the trap control unit
+	-csr_mepc_i:		New Trap returning address
+	-csr_sw_int_pend_i:	A SW interrupt has been requested 
+	-csr_tim_int_pend_i,:	A Timer interrupt has been requested 
+	-csr_ext_int_pend_i:	An Ext interrupt has been requested
+	-csr_trap_state_i:	New values for MIE,MPIE,MPP
+	-tcu_csr_we_i:		The TCU request signals to update the trap related registers (usually because of MRET/ECALLs, exceptions or interrupts handling)
+	-csr_mepc_o:		Actual trap returning address
+	-csr_control_o:		all the output signals used to control the datapath (Traps, Endianess, Privilege)
+
+	******|| REMARKABLE 	||******
+	
+	-csr_edit_proc:
+		This process implements the CSR writes/sets/resets. csr_mip is always written with the new int pending information, because they are asynchronous and can be
+		set during whatever instruction.
+		CSRs can be writte because of the tcu when a trap is captured, or because a CSR Opcode. 
+		
+	-csr_read_proc :
+		If a read operation has been required, which is always the case for CSR opcodes, it returns the data placed at csr_addr_i.
+		
+	******|| NOTES		||******
+
 	Read-only fixed registers are hardcoded into the core.
 	U-mode and M-mode support is a must, still in progress..
 	Little-endianess only will be supported for now
@@ -14,7 +53,7 @@
 	THe menvcfg reg is not supported because the extensions it refers to (Fence, Zicboz, Zicbom) are not supported in Bourbon atm
 	
 	Machine Configuration Registers 	: Done			( mvendor, misa, mhartid, mconfigptr, etc..	)
-	Machine Trap Handling Registers 	: Partially Done	( mstatus, mie, mip, mtvec, mcause etc.. 	)
+	Machine Trap Handling Registers 	: Done			( mstatus, mie, mip, mtvec, mcause etc.. 	)
 	Machine Memory Protection Registers 	: Not Done		( pmpcfg, pmpaddr, mseccfg 			)
 	Machine Performance Registers   	: Not Done		( mcounten, mcycle, hpmcounter etc..		)
 	Machine Debug Specification Registers	: Not Done		( dcsr, dpc, trace etc..			)
@@ -24,7 +63,8 @@
 
 module beta_csr_regfile import beta_csr_pkg::*; #(
 		
-		parameter unsigned DataWidth = 32
+		parameter unsigned DataWidth = 32,
+		parameter unsigned AddrWidth = 32
 	
 	)(
 
@@ -46,14 +86,14 @@ module beta_csr_regfile import beta_csr_pkg::*; #(
 		input logic[1:0]		csr_priv_lvl_i,
 		input logic [DataWidth-1:0] 	csr_mtval_i,
 		input logic [DataWidth-1:0] 	csr_mcause_i,
-		input logic [DataWidth-1:0] 	csr_mepc_i,
+		input logic [AddrWidth-1:0] 	csr_mepc_i,
 		input logic			csr_sw_int_pend_i,
 		input logic  			csr_tim_int_pend_i,			
 		input logic   			csr_ext_int_pend_i,
 		input logic [2:0]		csr_trap_state_i,	//MIE,MPIE,MPP
 
 		input logic			tcu_csr_we_i,
-		output logic [DataWidth-1:0] 	csr_mepc_o,
+		output logic [AddrWidth-1:0] 	csr_mepc_o,
 		
 		/* List of CSRs output signals */
 		
@@ -68,7 +108,7 @@ module beta_csr_regfile import beta_csr_pkg::*; #(
 	logic 				csr_mstatush_int;
 	logic [MIP_WIDTH-1:0]		csr_mip_int;
 	logic [MIE_WIDTH-1:0]		csr_mie_int;
-	logic [DataWidth-1:0]		csr_mepc_int;
+	logic [AddrWidth-1:0]		csr_mepc_int;
 	logic [DataWidth-1:0]		csr_mcause_int;
 	logic [DataWidth-1:0]		csr_mtval_int;
 	logic [DataWidth-1:0]		csr_mtvec_int;
@@ -210,7 +250,7 @@ module beta_csr_regfile import beta_csr_pkg::*; #(
 	
 	// Read CSRs process
 		
-	always_comb begin : read_proc 
+	always_comb begin : csr_read_proc 
 		if( csr_en_i & csr_op_i[CSR_OP_R_BIT] ) begin
 		
 			case ( csr_addr_i )
@@ -261,9 +301,11 @@ module beta_csr_regfile import beta_csr_pkg::*; #(
 			endcase
 			
 		end
+		else begin
+			csr_rdata_int = '0;
+		end
 	end
-	
-	/* Trap Handling interface process */
+
 
 	/* Assigning outputs */
 	

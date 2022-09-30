@@ -1,51 +1,121 @@
 //`include "beta_def.sv"
 
 /*
-	Version 0.7
-	9/07/2022
+	Trap Control Unit v0.8 30/09/2022
+
+	******|| INSTANTIABLES 	||******
+
+	******|| PARAMETERS 	||******
+
+	-DataWidth :		Width of data lines
+	-AddrWidth :		Width of addresses
+	
+	******|| INTERFACES 	||******
+
+	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
+	-execu_control_word_i :		Control Word coming from the Decode Stage
+	-execu_new_instr_i :		New instruction signal. A new instruction has been injected into the exe stage
+	-execu_alu_op_o :		From the control word, enable the ALU
+	-execu_shu_size_i :		Encoded shift size ({|operand B[4:1],operand B[0]} -> 00 Zero shift, 01 One Shift, 11/10 Multiple bits shift)
+	-execu_shu_busy_i :		Shift Unit busy signal. It is used for the execu multi-cycle units protocol.
+	-execu_shu_mode_o :		Shift Unit operational mode. (Left, Right, Right Rotate)
+	-execu_shu_en_o :		From the control word, enable the Shift Unit
+	-execu_bju_op_o :		From the control word, enable the BJU to operate (Branches, Jals or Jalrs)
+	-execu_bju_btaken_i :		The branch was taken from the BJU
+	-execu_lsu_busy_i :		Load & Store unit busy signal. It is used for the execu multi-cycle units protocol.
+	-execu_lsu_op_size_o :		From the control word, specifty the memory data transaction size (Byte, Halfword, Word)
+	-execu_lsu_op_o :		From the control word, specify the memory operation (Load or Store)
+	-execu_lsu_en_o :		From the control word, enable the Load & Store unit
+	-execu_csr_op_o :		From the control word, specify the csr operation (write,set,reset)
+	-execu_csr_en_o :		From the control word, enable the CSR regfile 
+	-execu_trap_detected_i :	The TCU detected a trap
+	-execu_trap_ret_i :		An enviromental return (MRET) has been detected
+	-execu_trap_nextpc_sel_o :	Exe stage next pc multiplexer selection signal in case of a trap
+	-execu_trap_taken_o :		Latched version of the trap detected signal. This one is used to actually enforce trap mechanisms into the datapath.
+	-execu_result_sel_o :		Exe stage result multiplexer selection signal
+	-execu_nextpc_sel_o :		Exe stage next pc multiplexer selection signal before a trap
+	-execu_exe_stage_busy_o :	Exe stage is busy (e.g. because of multi-cycle op)
+	-execu_reg_wr_en_o :		Write-back request to the main regfile
+
+	******|| REMARKABLE 	||******
+	
+	The first combinatorial processes are used to drive the control word signals to the outside, enabling and configuring the right modules into the exe stage.
+	The selection process is used to select the correct next pc and the correct results from the 2 main muxes into the exe stages.
+	
+	Event Handling:
+	
+		An event is a special condition causing a different behaviour than the conventional one (1 clk cycles instructions).
+		For each event, we define a latch. We have latches for the lsu, shu, one for traps and one for next instructions and pending instructions.
+		we lso have a latch for a single cycle instruction and for multi cycle instructions.
+		multi-cycle units will always have a 2-bit ff we'll describe later.
+		
+		The trap latch is actually made of 2 ffs. one for Exceptions and one for interrupts. basically, until a new instruction is fetched, we must
+		preserve the trap_detected_signal (penality NOPs would overwrite their behaviour otherwise), so we memorize the exception or interrupt occurrence.
+		Then we have some checks to handle interrupts occurring during both a single cycle and a multi cycle operation.
+		
+		The write latch is a ff used to set the write signal only once and for 1 clock cycle for instruction. multi-cycle ff is used to allow just one write. single-cycle ff
+		seems useless, so it can be removed (I have to make a double check though).
+		
+		New instruction latch is quite important. Variations are allowed only once for instruction, that's why we must specify when a new instruction is fetched.
+		However, each stage won't last for just 1 clock cycles, because of the instruction memory protocol always taking at least 3 clock cycles.
+		Therefore we must ensure the signal to be high for exactly one clock cycle for each instruction. 
+		This mechanism could be actually simplified in the future, but I need to refactor the pipelining system.
+		Because it is possible for multi-cycle instructions to last so much that a new instruction can be correctly fetched from memory and reach the execution stage before its
+		end, we must provide one new_instruction_pending signal, so that we won't skip such instruction.
+		
+		The event handling structure is a quite-regular solution, but it has to be simplified a bit for the new instructions and possibly the trap.
+		
+	
+	Multi-cycle protocols:
+	
+	The protocol is very simple.
+	if a multi-cycle op on a unit U has been requested and no other operation on U is enclosing the protocol, and no exception has been detected, then
+	enable U, wait for U to lower its busy signal, then lower the enable of U.
+	U-fsm and U-latch will allow for the state machine to properly work. In the end we got 2 clock cycles latency + the Unit required clk cycles to complete.
+	There is clearly some redundancy, because U-fsm and U-latch have basically the same meaning, so there is room for optimization.
+	
+	The exe stage is busy only when a multi-cycle operation occurs. At the moment we only have 2 types of them:
+		-Shift operations
+		-Load & Store operations	
+	
+		
+	******|| NOTES		||******
 
 	This unit is meant to drive control signals coming from the decode stage to task domains/operative units in the exe_stage
 	In the future it could be split into several CUs belongs to a wider control domain
-
-	I have integrated the busy/sync/stall logic. At the moment it is very basic. 
-	I added the pipeline, hence the busy signals does not depend anymore on the decode stage busy signal. However, the stage still
-	never rises the busy signal in case of combinatorial calculations. (in the future I could change this).
-
-	Cu also support the event handler at the moment.
-
 	The state machine protocols could be compacted in one machine receiving a flag as a condion (depending on the requested sequential
 	structure to be driven) and a MUX for selecting the correct group of signals.
 	
-	The event handler now supports the pipeline Write event.
-	
-
+	the control word signal exe_sys_priv_en is not yet used. I don't remember exactly why I added it lol.
 
 */
 
-module beta_exe_cu import beta_pkg::*; #(
-	parameter unsigned DataWidth = 32
+import beta_exe_stage_pkg::*;
+
+module beta_exe_cu #(
+	parameter unsigned DataWidth = 32,
+	parameter unsigned AddrWidth = 32
 )
 (
 	input logic 		clk_i,
 	input logic 		rstn_i,
 	
 	exe_control_word_t	execu_control_word_i,
-	input logic		execu_new_instr_i,	//beta
+	input logic		execu_new_instr_i,	
 
 	/*Arithmetic & Logic Unit Port */
-	input logic 		execu_alu_op_end_i,
+	//input logic 		execu_alu_op_end_i,
 	output exe_alu_op_t	execu_alu_op_o,
 
 	/*Shift Unit Port*/
-	input logic[1:0]	execu_shu_size_i, //Encoded shift size ({&opB[4:1],opB[0]} -> 00 Zero shift, 01 One Shift, 11/10 Multiple bits shift)
+	input logic[1:0]	execu_shu_size_i, 	//Encoded shift size ({|opB[4:1],opB[0]} -> 00 Zero shift, 01 One Shift, 11/10 Multiple bits shift)
 	input logic 		execu_shu_busy_i,
 	output logic[1:0] 	execu_shu_mode_o,
 	output logic	 	execu_shu_en_o,
 	
-
 	/*Branch & Jump Unit Port*/
 	output exe_bju_op_t	execu_bju_op_o,
-	input logic		execu_branch_taken_i,
+	input logic		execu_bju_btaken_i,
 
 	/*Load & Store Unit Port*/
 	input logic 		execu_lsu_busy_i,
@@ -69,7 +139,7 @@ module beta_exe_cu import beta_pkg::*; #(
 
 	//Inter Stages sync port
 
-	input logic		execu_dec_stage_busy_i,
+	//input logic		execu_dec_stage_busy_i,
 	output logic		execu_exe_stage_busy_o,
 	output logic		execu_reg_wr_en_o
 );
@@ -90,13 +160,27 @@ module beta_exe_cu import beta_pkg::*; #(
 	logic		execu_csr_en_int;
 
 	logic[1:0]	execu_trap_taken_int;
+	
+	//Event Handler FFs
+	
+	logic 		multi_cycle_op;
+	logic		execu_reg_wr_en_int;
+	logic[1:0]     	event_latch;
+	logic[1:0] 	shift_latch;
+	logic[1:0] 	lsu_latch;
+	logic[1:0]	trap_latch;		//Record the event of a trap occurred
+	logic	   	mc_write_latch;		//Multicycle write latch
+	//logic 	sc_write_latch;		//Singlecycle write latch
+	logic 		new_instr_latch;	
+	logic 		new_instr_pend_latch;
+	logic		event_flag;		//This flag notifies that a seq. operation has completed (i.e. an event occurred)
 
 	/* Trap Detection Process */
 	
 	logic trap_exception_detected = execu_trap_detected_i[1];
 	
 	/*
-		trap_detected_i is a 1 clk cycle signal. execu_trap_taken_int is its version lastin for the entire instruction
+		trap_detected_i is a 1 clk cycle signal. execu_trap_taken_int is its version lasting for the entire instruction
 		
 		If an exception occurs, 3 things must be taken into account:
 			-1 : No GP/CSR Reg Write must be performed
@@ -152,7 +236,7 @@ module beta_exe_cu import beta_pkg::*; #(
 				execu_bju_op_int[1]							//Jumps save address
 			};		
 		
-			execu_nextpc_sel_int = execu_bju_op_int[1] | ( ~execu_bju_op_int[1] & execu_bju_op_int[0] & execu_branch_taken_i ); //Jump or a Taken Branch
+			execu_nextpc_sel_int = execu_bju_op_int[1] | ( ~execu_bju_op_int[1] & execu_bju_op_int[0] & execu_bju_btaken_i ); //Jump or a Taken Branch
 	end
 	
 
@@ -229,27 +313,15 @@ module beta_exe_cu import beta_pkg::*; #(
 	end
 
 	/* Event Handler Units : it is meant to handle events such as multicycle opcodes and write requests */
-	logic 		multi_cycle_op;
-	logic		execu_reg_wr_en_int;
-	logic[1:0]     	event_latch;
-	logic[1:0] 	shift_latch;
-	logic[1:0] 	lsu_latch;
-	logic[1:0]	trap_latch;		//Record the event of a trap occurred
-	logic	   	mc_write_latch;		//Multicycle write latch
-	logic 		sc_write_latch;		//Singlecycle write latch
-	logic 		new_instr_latch;	
-	logic 		new_instr_pend_latch;
-	logic		event_flag;		//This flag notifies that a seq. operation has completed (i.e. an event occurred)
 	
 	assign multi_cycle_op = ( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 ) | execu_control_word_i.exe_mem_op_en;	//This signal will depend on the triggering event signals
 	assign execu_reg_wr_en_int = mc_write_latch | (~multi_cycle_op & new_instr_latch & execu_control_word_i.exe_reg_wr_en ) & ~execu_trap_taken_int[1]; //(Exception Condition 1)
 	assign event_flag = ( shift_latch == 2'b10 ) | 	( lsu_latch == 2'b10 )	;
 	
 	//in this way we avoid 1 clk delay for the trap_taken to reset
-	//assign execu_trap_taken_int[1] = execu_trap_detected_i[1] | trap_latch[1] ;//& ~execu_new_instr_i);
-	//assign execu_trap_taken_int[0] = trap_latch[0] ;
-	assign execu_trap_taken_int[1] = execu_trap_detected_i[1] | (trap_latch[1] & ~execu_new_instr_i) ;//& ~execu_new_instr_i);  
-	assign execu_trap_taken_int[0] = (execu_trap_detected_i[0] & execu_new_instr_i) | (trap_latch[0] & ~execu_new_instr_i ) ;  
+	assign execu_trap_taken_int[1] = execu_trap_detected_i[1] | (trap_latch[1] & ~execu_new_instr_i) ; 
+	assign execu_trap_taken_int[0] = (execu_trap_detected_i[0] & execu_new_instr_i) | (trap_latch[0] & ~execu_new_instr_i ) ; 
+	 
 	always_ff@(posedge clk_i) begin: latch_events
 		if(rstn_i == 1'b0) begin
 			//event_latch <= 2'b00;
@@ -257,7 +329,7 @@ module beta_exe_cu import beta_pkg::*; #(
 			lsu_latch <= 2'b00;
 			
 			mc_write_latch <= 1'b0;
-			sc_write_latch <= 1'b0;
+			//sc_write_latch <= 1'b0;
 			trap_latch <= 2'b00;
 			
 			new_instr_latch <= '0;
@@ -277,11 +349,6 @@ module beta_exe_cu import beta_pkg::*; #(
 			else if( lsu_latch == 2'b11 ) begin lsu_latch <= 2'b00; end 					//Reset
 			
 			// Trap occurred event handler: When a new instruction is received upon a trap, reset the trap latch 
-			/*if( (execu_trap_detected_i != TCU_NOTRAP) & trap_latch == TCU_NOTRAP & execu_new_instr_i ) begin trap_latch <= execu_trap_detected_i; end
-			else if( (trap_latch[1]) & execu_new_instr_i ) begin trap_latch <= TCU_NOTRAP; end	
-			else if( (trap_latch[0]) ) begin
-				if( ~multi_cycle_op ) begin trap_latch <= TCU_NOTRAP; end			//An interrupt will wait until the mc bit is low (e.g. a comb instruction or the end of a seq)
-			end */
 			
 			if( (execu_trap_detected_i[1] ) & ~trap_latch[1] & execu_new_instr_i ) begin trap_latch[1] <= execu_trap_detected_i[1]; end
 			else if( (trap_latch[1]) & execu_new_instr_i ) begin trap_latch[1] <= 1'b0; end	
@@ -299,10 +366,10 @@ module beta_exe_cu import beta_pkg::*; #(
 				if( event_flag & execu_control_word_i.exe_reg_wr_en ) begin mc_write_latch <= 1'b1; end
 				else begin mc_write_latch <= 1'b0; end
 			end
-			else begin
+			/*else begin
 				if( new_instr_latch & ~sc_write_latch & execu_control_word_i.exe_reg_wr_en ) sc_write_latch <=  1'b1;
 				else if ( sc_write_latch ) sc_write_latch <=  1'b0;
-			end
+			end*/
 			
 			//New Instruction Event Handler : it is meant to latch the new instruction request and a pending one decoded while the exe stage was still busy 
 			if( execu_new_instr_i & ~new_instr_latch ) begin new_instr_latch <= 1'b1; end

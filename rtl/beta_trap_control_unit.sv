@@ -2,17 +2,65 @@
 `include "pkg/beta_trap_pkg.sv"
 
 /*
-	15/08/2022, v 0.1
+	Trap Control Unit v0.2 30/09/2022
+
+	******|| INSTANTIABLES 	||******
+
+	******|| PARAMETERS 	||******
+
+	-DataWidth :		Width of data lines
+	-AddrWidth :		Width of addresses
+	
+	******|| INTERFACES 	||******
+
+	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
+	-priv_lvl_i :			Hart current privilege level (it is not fully used atm)
+	-tcu_next_pc_i :		Next PC computed for the execution stage (previous_PC + 4 usually)
+	-tcu_fault_instr_i :		Instruction that generated the exception
+	-tcu_lsu_fault_addr_i :		Misaligned Address for Load/Store
+	-tcu_csr_control_i :		CSRs control data
+	-tcu_mtval_o :			New mtval value for CSRs
+	-tcu_mcause_o :			New mcause value for CSRs
+	-tcu_mepc_o :			New mepc value for CSRs
+	-tcu_sw_int_pend_o :		A software interrupt has been requested. Update the CSRs.	
+	-tcu_tim_int_pend_o :		A Timer interrupt has been requested. Update the CSRs.			
+	-tcu_ext_int_pend_o :		An External interrupt has been requested. Update the CSRs.
+	-tcu_trap_state_o :		New MIE,MPIE,MPP values for CSRs
+	-tcu_csr_we_o :			A trap has been detected. Enable the write on the CSRs.	
+	-tcu_sw_intr_i :		Software interrupt signal coming from outside the core
+	-tcu_tim_intr_i :		Timer interrupt signal coming from outside the core
+	-tcu_ext_intr_i :		External interrupt signal coming from outside the core
+	-tcu_instr_exception_i :	An instruction exception occurred; INSTR_NOTRAP (00), INSTR_MISALIG_FETCH (01), INSTR_ILLEGAL_FETCH (10)
+	-tcu_lsu_exception_i :		An LSU exception occurred; LSU_NOTRAP (00), LSU_MISALIG_LOAD (01), LSU_MISALIG_STORE (10)
+	-tcu_env_exception_i :		An enviroment exception occurred; ENV_NOTRAP (00), ENC_ECALL (01), ENV_MRET (10)
+	-tcu_instr_penality_i :		A penality instruction has been injecteed into the pipe. MRET penality is 10, JALs/Branches penality is 01
+	-tcu_trap_address_o :		New PC pointing to the trap handler
+	-tcu_trap_detected_o :		A trap has been detected; TCU_NOTRAP (00), TCU_INTERRUPT (01), TCU_EXCEPTION (10)
+	-tcu_halt_o :			A critical trap occurred. Halt the core. (this is not used atm, because all traps are handled)
+
+	******|| REMARKABLE 	||******
+	
+	-trap_detector:
+		This process identifies wether a trap occurs or not. interrupts depends on the interrupt signal and the pending signal coming from the
+		CSRs. In the end, for each trap cause and values are assigned. trap_detected[1] is for Exceptions, trap_detected[0] is for Interrupts.
+		
+	-trap_state_handling :
+		If a trap has been detected, we must change the CSRs. If we are handling an MRET we must restore the state pre-trap. Otherwise we must
+		consider that interrupts might occur during a Jump (JALs, branchea) or an MRET returning phase. If that's the case, we must act accordingly.
+		
+	******|| NOTES		||******
 	
 	Thre TCU is designed to catch all interrupts and exceptions coming from the datapath. It must output the interrupt signal to the execution control unit.
-	NMI still not handled.
-	Who has higher priority, Exceptions or interrupts?
+	NMI still not handled. Exception has higher priority than interrupts.
+	
+	Many CSR control signals are unused here like machine_endianess,mcause,modify_privilege,mtval,user_endianess
 */
 
 
 module beta_trap_control_unit import beta_csr_pkg::*;import beta_trap_pkg::*; #(
 		
-		parameter unsigned DataWidth = 32
+		parameter unsigned DataWidth = 32,
+		parameter unsigned AddrWidth = 32
 	
 	)(
 	
@@ -20,17 +68,17 @@ module beta_trap_control_unit import beta_csr_pkg::*;import beta_trap_pkg::*; #(
 		input logic			rstn_i,
 		
 		input logic			priv_lvl_i,
-		input [DataWidth-1:0]		tcu_next_pc_i,
+		input [AddrWidth-1:0]		tcu_next_pc_i,
 		input [DataWidth-1:0]		tcu_fault_instr_i,		//Instruction that generated the exception
-		input [DataWidth-1:0]		tcu_fault_addr_i,		//Misaligned Address for Load/Store
+		input [AddrWidth-1:0]		tcu_lsu_fault_addr_i,		//Misaligned Address for Load/Store
 		
 		/* CSR interface */
 		
 		input csr_ctrl_t		tcu_csr_control_i,
 		
 		output logic [DataWidth-1:0] 	tcu_mtval_o,
-		output logic [DataWidth-1:0] 	tcu_mcause_o,
-		output logic [DataWidth-1:0] 	tcu_mepc_o,
+		output logic [4:0] 		tcu_mcause_o,
+		output logic [AddrWidth-1:0] 	tcu_mepc_o,
 		output logic			tcu_sw_int_pend_o,
 		output logic  			tcu_tim_int_pend_o,			
 		output logic   			tcu_ext_int_pend_o,
@@ -45,13 +93,12 @@ module beta_trap_control_unit import beta_csr_pkg::*;import beta_trap_pkg::*; #(
 		input logic			tcu_ext_intr_i,
 		input logic [1:0]		tcu_instr_exception_i,
 		input logic [1:0]		tcu_lsu_exception_i,
-		input logic [1:0]		tcu_sync_exception_i,
+		input logic [1:0]		tcu_env_exception_i,
 		input logic [1:0]		tcu_instr_penality_i,
 		
-		// Enviromental call exception signal placeholder
 		// PMP exception signals placeholder
 		
-		output logic [DataWidth-1:0]	tcu_trap_address_o,
+		output logic [AddrWidth-1:0]	tcu_trap_address_o,
 		output logic [1:0]		tcu_trap_detected_o,
 		output logic			tcu_halt_o
 
@@ -59,10 +106,10 @@ module beta_trap_control_unit import beta_csr_pkg::*;import beta_trap_pkg::*; #(
 	);
 
 	logic [1:0]		tcu_trap_detected_int;	
-	logic [DataWidth-1:0]	tcu_trap_address_int;
+	logic [AddrWidth-1:0]	tcu_trap_address_int;
 	logic [DataWidth-1:0] 	tcu_mtval_int;
 	logic [4:0] 		tcu_mcause_int;
-	logic [DataWidth-1:0] 	tcu_mepc_int;
+	logic [AddrWidth-1:0] 	tcu_mepc_int;
 	logic			tcu_sw_int_pend_int;
 	logic  			tcu_tim_int_pend_int;			
 	logic   		tcu_ext_int_pend_int;
@@ -78,12 +125,12 @@ module beta_trap_control_unit import beta_csr_pkg::*;import beta_trap_pkg::*; #(
 	
 		//Exception case: 
 			
-		if( tcu_instr_exception_i[1] ) begin tcu_mcause_int = INSTR_ILLEGAL; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int= tcu_fault_instr_i; end
-		else if( tcu_instr_exception_i[0] ) begin tcu_mcause_int = INSTR_ADDR_MISALIGNED; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int= tcu_fault_instr_i; end
-		else if( tcu_lsu_exception_i[0] ) begin tcu_mcause_int = LOAD_ADDR_MISALIGNED; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int= tcu_fault_addr_i; end
-		else if( tcu_lsu_exception_i[1] ) begin tcu_mcause_int = STORE_ADDR_MISALIGNED; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int= tcu_fault_addr_i; end
-		else if( tcu_sync_exception_i[0] ) begin tcu_mcause_int = (priv_lvl_i) ? ENV_CALL_MMODE : ENV_CALL_UMODE; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int= '0; end
-		else if( tcu_sync_exception_i[1] ) begin tcu_mcause_int = '0; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int= '0; end
+		if( tcu_instr_exception_i[1] ) begin tcu_mcause_int = INSTR_ILLEGAL; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int = tcu_fault_instr_i; end
+		else if( tcu_instr_exception_i[0] ) begin tcu_mcause_int = INSTR_ADDR_MISALIGNED; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int = tcu_fault_instr_i; end
+		else if( tcu_lsu_exception_i[0] ) begin tcu_mcause_int = LOAD_ADDR_MISALIGNED; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int = tcu_lsu_fault_addr_i; end
+		else if( tcu_lsu_exception_i[1] ) begin tcu_mcause_int = STORE_ADDR_MISALIGNED; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int = tcu_lsu_fault_addr_i; end
+		else if( tcu_env_exception_i[0] ) begin tcu_mcause_int = (priv_lvl_i) ? ENV_CALL_MMODE : ENV_CALL_UMODE; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int= '0; end
+		else if( tcu_env_exception_i[1] ) begin tcu_mcause_int = '0; tcu_trap_detected_int[1] = 1'b1; tcu_mtval_int = '0; end
 		else begin tcu_trap_detected_int[1] = 1'b0; end
 		
 		//Interrupt Case : pending signal is high until the input interrupt signal is drive low by the external agent requiring the interrupt
@@ -116,11 +163,11 @@ module beta_trap_control_unit import beta_csr_pkg::*;import beta_trap_pkg::*; #(
 	
 	always_comb begin: trap_state_handling
 	
-		if( tcu_trap_detected_int != 2'b00 ) begin
+		if( tcu_trap_detected_int != TCU_NOTRAP ) begin
 		
 			tcu_csr_we_int = 1'b1;
 			
-			if( ~tcu_sync_exception_i[1] ) begin 	//In case of no Return
+			if( ~tcu_env_exception_i[1] ) begin 	//In case of no Return
 			
 				//If we are handling an interrupt during the MRET penality, use the old mepc instead of the next address (bcs it would refer to the first instruction following the mret)
 				if( tcu_instr_penality_i[1] ) begin
@@ -128,6 +175,7 @@ module beta_trap_control_unit import beta_csr_pkg::*;import beta_trap_pkg::*; #(
 				end 
 				else if( tcu_instr_penality_i[0] ) begin	//Handling the ctrl Penality
 					if( tcu_fault_instr_i != 32'h00000013 & tcu_trap_detected_int[0] ) tcu_mepc_int = tcu_next_pc_i;
+					else tcu_mepc_int = tcu_next_pc_i;
 				end
 				else begin tcu_mepc_int = tcu_next_pc_i; end	//No penality during the trap
 				
@@ -148,13 +196,17 @@ module beta_trap_control_unit import beta_csr_pkg::*;import beta_trap_pkg::*; #(
 		end
 		else begin
 			tcu_csr_we_int = 1'b0;
+			tcu_csr_we_int = 1'b0;
+			tcu_mepc_int = tcu_next_pc_i;
+			tcu_trap_address_int = '0 ;
+			tcu_trap_state_int = {tcu_csr_control_i.mie,tcu_csr_control_i.mpie,tcu_csr_control_i.mpp};
 		end
 	
 	end
 	
 	assign tcu_trap_address_o = tcu_trap_address_int;
 	assign tcu_trap_detected_o = tcu_trap_detected_int;
-	assign tcu_mcause_o = {tcu_mcause_int[4],27'h0000000,tcu_mcause_int[3:0]};
+	assign tcu_mcause_o = tcu_mcause_int;
 	assign tcu_mepc_o = tcu_mepc_int;
 	assign tcu_mtval_o = tcu_mtval_int;
 	assign tcu_trap_state_o = tcu_trap_state_int;
@@ -164,4 +216,4 @@ module beta_trap_control_unit import beta_csr_pkg::*;import beta_trap_pkg::*; #(
 	assign tcu_halt_o = tcu_halt_int;
 	assign tcu_csr_we_o = tcu_csr_we_int;
 
-endmodule;
+endmodule

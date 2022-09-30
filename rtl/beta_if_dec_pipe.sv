@@ -68,7 +68,7 @@ module beta_if_dec_pipe import beta_pkg::*; #(
 			pip_next_pc_int <= '0;
 			pip_penality_int <= '0;
 		end
-		else if( pip_stall_i == 1'b0 ) begin
+		else if( pip_stall_i == 1'b0  ) begin
 			pip_instr_int <= pip_instr_i;
 			pip_new_instr_int <= pip_new_instr_i;
 			pip_next_pc_int <= pip_next_pc_i;

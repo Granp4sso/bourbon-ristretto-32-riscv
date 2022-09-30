@@ -1,289 +1,190 @@
-//`include "beta_def.sv"
+`include "pkg/beta_dec_stage_pkg.sv"
 
 /*
-13/05/2022
-Version 0.3
+	Instruction Decoder v0.3 26/08/2022
 
-	- The invalid instruction is apllied here to stop the microrom from selecting the word 0000000 (Load Byte)
-	- Takes instruction as an input and extracts:
-		--Source register 1
-		--Source register 2
-		--Destination register
-		--Immediate (12 or 20)
-		--Invalid instruction exception
-		--Control Unit micro-ROM 9-bit address made by
-			---instruction opcode (Major opcode)
-			---instruction funct3 (Minor opcode)
-			---instruction funct7 (Further specifies minor opcode)
+	******|| INSTANTIABLES 	||******
+
+	******|| PARAMETERS 	||******
+
+	-DataWidth :		Width of data lines 
+	-AddrWidth :		Width of addresses
+	
+	******|| INTERFACES 	||******
+
+	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
+	
+	-idec_instr_i:			Instruction coming from the instruction fetch stage
+	-idec_rs1_o:			Source register 1 decoded from the input instruction
+	-idec_rs2_o:			Source register 2 decoded from the input instruction
+	-idec_rd_o:			Destination register decoded from the input instruction
+	-idec_imm12_o:			12 bits immediate decoded from the input instruction
+	-idec_imm20_o:			20 bits immediate decoded from the input instruction
+	-idec_addr_o:			Micro-rom address signal
+	-idec_subaddr_o:		Micro-rom sub-addressing signal. It is used for SYS opcodes.
+	-idec_invalid_instr_o:		If a legal instruction is fetched, an invalid instruction signal will be raised (Exception)
+
+	******|| REMARKABLE 	||******
+
+	standard_signal_building:
+	
+		This process builds the source registers and destination register signals. They might not be used always, however they are computed anyways.
+		Such a choice implies a major power consumption, but a faster solution. Is it even worth it? In future I could gate to zero such signals if they are not required. 
+		
+	urom_signals_building:
+	
+		This proces builds the urom address using function 7 and function 3 fields, along with the opcode field.
+		
+	immediate_building:
+	
+		This proces builds the immediate whenever they are required.
+
+	******|| NOTES		||******
+
+	The instruction decoder is meant to take the instruction from the if_stage and extract several crucial information. (Registers, Immediates, Offsets and Illegal Instructions flags).
+	Control signals are then produced by means of a urom, addressed thanks to the idec_addr and idec_subaddr signals.
+
 */
 
-module beta_decoder #() 
+module beta_decoder import beta_dec_stage_pkg::*; #(
+
+	parameter unsigned DataWidth = 32,
+	parameter unsigned AddrWidth = 32
+
+) 
 (
-	input logic clk_i,
-	input logic rstn_i,
-	input logic[XLEN-1:0] instr_i,
+	input logic 			clk_i,
+	input logic 			rstn_i,
+	input logic[DataWidth-1:0] 	idec_instr_i,
 
-	output logic[4:0] rs1_o,
-	output logic[4:0] rs2_o,
-	output logic[4:0] rd_o,
+	output logic[4:0] 		idec_rs1_o,
+	output logic[4:0] 		idec_rs2_o,
+	output logic[4:0] 		idec_rd_o,
 
-	output logic[11:0] imm12_o,
-	output logic[19:0] imm20_o,
+	output logic[11:0]		idec_imm12_o,
+	output logic[19:0] 		idec_imm20_o,
 
-	output logic[8:0] cu_addr_o,
-	output logic[4:0] cu_subaddr_o,
+	output logic[8:0] 		idec_addr_o,
+	output logic[4:0]		idec_subaddr_o,
 
-	output logic invalid_instr_o
+	output logic 			idec_invalid_instr_o
 	
 );
-	import beta_pkg::*;
+	logic [6:0] 	opcode_int;
+	logic [2:0] 	funct3_int;
+	logic [6:0] 	funct7_int;
 
-	logic [6:0] opcode_int;
-	logic [2:0] funct3_int;
-	logic [6:0] funct7_int;
+	logic[4:0] 	rs1_int;
+	logic[4:0] 	rs2_int;
+	logic[4:0] 	rd_int;
 
-	logic[4:0] rs1_int;
-	logic[4:0] rs2_int;
-	logic[4:0] rd_int;
+	logic[11:0] 	imm12_int;
+	logic[19:0] 	imm20_int;
 
-	logic[11:0] imm12_int;
-	logic[19:0] imm20_int;
+	logic[8:0] 	urom_addr_int;
+	logic 		invalid_instr_int;
 
-	logic[8:0] cu_addr_int;
-	logic invalid_instr_int;
 
-	/*Segnali ausiliari*/
+	logic 		funct7_mask_bit_int;
+	logic 		funct3_mask_bit_int;
+	logic 		invalid_opcode_int;
 
-	logic funct7_mask_bit_int;
-	logic funct3_mask_bit_int;
-	logic invalid_opcode_int;
 
-	/*	
-		Contro unit signals are still to be defined. At least we require a signal specifiying if the decoded instruction
-		is U, UJ, B, S, L, I, Reg. Then the CU internal micro-ROM is supposed to jump to the correct micro-program.
+	assign opcode_int = idec_instr_i[6:0];
+	assign funct3_int = idec_instr_i[14:12];
+	assign funct7_int = idec_instr_i[31:25];
 
-		The UC will use instructions to address the MicroRom. We'll Need
-		Sign extension or not
-		Select Immediate or Registers
-		Enable left shift
-		Enable Right Shift
-		Addition
-		Subtraction
+	assign idec_rs1_o = rs1_int;
+	assign idec_rs2_o = rs2_int;
+	assign idec_rd_o = rd_int;
 
-		We want the Alu to be responsible for making only calculations.
-	*/
+	assign idec_imm12_o = imm12_int;
+	assign idec_imm20_o = imm20_int;
 
-	/**/
-
-	assign opcode_int = instr_i[6:0];
-	assign funct3_int = instr_i[14:12];
-	assign funct7_int = instr_i[31:25];
-
-	assign rs1_o = rs1_int;
-	assign rs2_o = rs2_int;
-	assign rd_o = rd_int;
-
-	assign imm12_o = imm12_int;
-	assign imm20_o = imm20_int;
-
-	assign cu_addr_o = (invalid_instr_int) ? '1 : cu_addr_int; //Temporary fix, it will be handled by exception paths (outside)
-	assign cu_subaddr_o = {imm12_int[9:8],imm12_int[2:0]};
-	assign invalid_instr_o = invalid_instr_int;
+	assign idec_addr_o = (invalid_instr_int) ? '1 : urom_addr_int; 
+	assign idec_subaddr_o = {imm12_int[9:8],imm12_int[2:0]};
+	assign idec_invalid_instr_o = invalid_instr_int;
 
 	initial assign funct7_mask_bit_int = 0;
 
 	always_comb begin : standard_signal_building
-		rs1_int = instr_i[19:15];
-		rs2_int = instr_i[24:20];
-		rd_int = instr_i[11:7];
+		rs1_int = idec_instr_i[19:15];
+		rs2_int = idec_instr_i[24:20];
+		rd_int = idec_instr_i[11:7];
 	end
 
-	always_comb begin : CU_signals_building
+	always_comb begin : urom_signals_building
 
 		/*
-		Ogni istruzione dell'ISA possiede 32 distinte categorie (OP-Code) poichè 5 bit sono liberi 2 sono fissati a 11. (fa eccezione la versione compressa).
-		https://five-embeddev.com/riscv-isa-manual/latest/opcode-map.html#opcodemap
-		Per ogni categoria vi sono 8 possibili microfunzionalità (funct3), per un totale di 256 istruzioni. Infine ci sono teoricamente altri 7 bit dati da 
-		funct 7 per estendere eventualmente tali microfunzionalità, anche se non mi è ancora chiaro come sfruttarlo. Al momento posso considerarlo puramente binario
-		per un totale di 512 istruzioni, o in alternativa un massimo di 256*2^7 = 32768 istruzioni.
+			Each ISA instruction can be split into 32 categories (OP-codes). 5 bits are used for such a purpose, while the lower 2 bits are set to 11 (If compressed
+			instructions are not supported). The funct3 is a 3 bit field encoding 8 possible micro-functionalities, for a total of 256 possible instructions.
+			Finally we have 7 more bits in the funct7 fields used to extend such micro-functinoalities.
+			RV32I does not usually use such a field a part from a couple of instructions using just one of those 7 bits.
+			https://five-embeddev.com/riscv-isa-manual/latest/opcode-map.html#opcodemap
 		*/
+		
 		funct3_mask_bit_int = 1'b0;
-		case({2'b00,opcode_int[6:2]}) //i primi 2 bit sono sempre pari a 1. Ciò implic una possibile identificazione più rapida di istruzioni non valide
-			OPCODE_IMM/4	: 
-				begin
-					/*Il funct7 diventa d'interesse unicamente per le operazioni di shift nel caso di immediati*/
+		invalid_opcode_int = 0;
+		funct7_mask_bit_int = 0;
+		
+		case(opcode_int[6:2]) 
+			OPCODE_IMM[6:2]			: begin funct7_mask_bit_int = (funct7_int == 7'h20 & funct3_int == 3'h5) ? 1'b1 : 1'b0; end
+			OPCODE_LUI[6:2]			: begin funct3_mask_bit_int = 1'b1; end
+			OPCODE_AUIPC[6:2]		: begin funct3_mask_bit_int = 1'b1; end
+			OPCODE_REG[6:2]			: begin funct3_mask_bit_int = 1'b0; funct7_mask_bit_int = 1; end
+			OPCODE_JAL[6:2]			: begin funct3_mask_bit_int = 1'b1; end
+			OPCODE_JALR[6:2]		: begin funct3_mask_bit_int = 1'b1; end
+			OPCODE_BRANCH[6:2]		: begin funct3_mask_bit_int = 1'b0; end
+			OPCODE_LOAD[6:2]		: begin funct3_mask_bit_int = 1'b0; end
+			OPCODE_STORE[6:2]		: begin funct3_mask_bit_int = 1'b0; end
+			OPCODE_MISC_MEM[6:2]		: begin funct3_mask_bit_int = 1'b0; end					//Nothing supported from this category
+			OPCODE_SYSTEM[6:2]		: begin	funct3_mask_bit_int = 1'b0;  end
 
-					if(funct7_int == 7'h20 & funct3_int == 3'h5)
-						funct7_mask_bit_int = 1;
-					else funct7_mask_bit_int = 0;
-
-					invalid_opcode_int = 0;
-				
-				end
-			OPCODE_LUI/4	: 
-				begin
-					funct3_mask_bit_int = 1'b1;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 0;
-				end
-			OPCODE_AUIPC/4	:
-				begin
-					funct3_mask_bit_int = 1'b1;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 0;
-				end
-			OPCODE_REG/4	:
-				begin
-					funct3_mask_bit_int = 1'b0;
-					funct7_mask_bit_int = 1;
-					invalid_opcode_int = 0;
-				end
-			OPCODE_JAL/4	:
-				begin
-					funct3_mask_bit_int = 1'b1;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 0;
-				end
-			OPCODE_JALR/4	:
-				begin
-					funct3_mask_bit_int = 1'b1;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 0;
-				end
-			OPCODE_BRANCH/4	:
-				begin
-					funct3_mask_bit_int = 1'b0;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 0;
-				end
-			OPCODE_LOAD/4	:
-				begin;
-					funct3_mask_bit_int = 1'b0;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 0;
-				end
-			OPCODE_STORE/4	:
-				begin
-					funct3_mask_bit_int = 1'b0;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 0;
-				end
-
-			OPCODE_MISC_MEM/4	:
-				begin
-					funct3_mask_bit_int = 1'b0;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 0;
-				end
-			OPCODE_SYSTEM/4	:
-				begin
-					funct3_mask_bit_int = 1'b0;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 0;
-				end
-
-			default		:
-				begin
-					funct3_mask_bit_int = 1'b0;
-					funct7_mask_bit_int = 0;
-					invalid_opcode_int = 1;
-				end
+			default				: begin funct3_mask_bit_int = 1'b0; invalid_opcode_int = 1; end
 		endcase;
 		
-		cu_addr_int[0] = funct7_mask_bit_int & funct7_int[5];
-		cu_addr_int[3:1] = (funct3_mask_bit_int) ? '0 : funct3_int;
-		cu_addr_int[8:4] = opcode_int[6:2];
+		/* 
+			Some instructions do not require the funct7 or the funct3 field, hence we can mask their decoding.
+			The urom address is built accordingly:
+				-urom_addr_int[0] 	: odd addresses points to funct7 (single bit) instructions
+				-urom_addr_int[3:1] 	: here we have the funct3 field, if used
+				-urom_addr_int[8:4] 	: here we have the category.
+				
+			Finally, ant this stage, an invalid instruction can happen because of not word aligned instructions, or not recognized instructions.
+		*/
+		
+		urom_addr_int[0] = funct7_mask_bit_int & funct7_int[5];
+		urom_addr_int[3:1] = (funct3_mask_bit_int) ? '0 : funct3_int;
+		urom_addr_int[8:4] = opcode_int[6:2];
 		
 		invalid_instr_int = ~opcode_int[0] | ~opcode_int[1] | invalid_opcode_int;
 
 	end
 
 	always_comb begin : immediate_building
+	
+		// Immediates will be changed only if necessary
+		
+		imm20_int = 20'h0000;
+		imm12_int = 12'h000;
 
-		case({2'b00,opcode_int[6:2]})
+		case(opcode_int[6:2])
 
-			OPCODE_IMM/4	: //OK
-				begin
-					
-					imm12_int = instr_i[31:20];	
-					imm20_int = 20'h0000;
-					/*Shift instructions SLLI,SRLI,SRAI only uses 5 bits of the immediate, so the 7 most significant bits of imm12_int should be discarded.
-					  That doesn't matter because Shift operation will be taken into account by the ALU itself, and so will be sign extension etc..					
-					*/
-				
-				end
-			OPCODE_LUI/4	: /*LUI Instruction shall be specified to CU*/
-				begin
-					imm12_int = 12'h00;
-					imm20_int = instr_i[31:12];
+			OPCODE_IMM[6:2]		: begin imm12_int = idec_instr_i[31:20]; end
+			OPCODE_LUI[6:2]		: begin imm20_int = idec_instr_i[31:12]; end
+			OPCODE_AUIPC[6:2] 	: begin imm20_int = idec_instr_i[31:12]; end
+			OPCODE_REG[6:2]		: begin end
+			OPCODE_JAL[6:2]		: begin imm20_int = {idec_instr_i[31],idec_instr_i[19:12],idec_instr_i[20],idec_instr_i[30:21]}; end
+			OPCODE_JALR[6:2]	: begin imm12_int = idec_instr_i[31:20]; end
+			OPCODE_BRANCH[6:2]	: begin imm12_int = {idec_instr_i[31],idec_instr_i[7],idec_instr_i[30:25],idec_instr_i[11:8]}; end
+			OPCODE_LOAD[6:2]	: begin imm12_int = idec_instr_i[31:20]; end
+			OPCODE_STORE[6:2]	: begin imm12_int = {idec_instr_i[31:25],idec_instr_i[11:7]}; end
+			OPCODE_MISC_MEM[6:2]	: begin end
+			OPCODE_SYSTEM[6:2]	: begin imm12_int = idec_instr_i[31:20];end
 
-				end
-			OPCODE_AUIPC/4	: /*AUIPC Instruction shall be specified to CU*/
-				begin
-					imm12_int = 12'h00;
-					imm20_int = instr_i[31:12];
-				end
-			OPCODE_REG/4	: /*SUB/ADD and SRL/SRA share the same funct3 but they do have different funct7. Such info will be passed to the CU to build the micro-ROM address*/
-				begin
-					imm12_int = 12'h00;
-					imm20_int = 20'h00;
-				end
-			OPCODE_JAL/4	:
-				begin
-					imm12_int = 12'h00;
-					imm20_int = {instr_i[31],instr_i[19:12],instr_i[20],instr_i[30:21]};
-				end
-			OPCODE_JALR/4	:
-				begin
-					imm12_int = instr_i[31:20];
-					imm20_int = 20'h00;
-				end
-			OPCODE_BRANCH/4	:
-				begin
-					imm12_int = {instr_i[31],instr_i[7],instr_i[30:25],instr_i[11:8]};
-					imm20_int = 20'h00;
-				end
-			OPCODE_LOAD/4	:
-				begin
-					imm12_int = instr_i[31:20];
-					imm20_int = 20'h00;
-				end
-			OPCODE_STORE/4	:
-				begin
-					imm12_int = {instr_i[31:25],instr_i[11:7]};
-					imm20_int = 20'h00;
-				end
-
-			OPCODE_MISC_MEM/4	:
-				begin
-					imm12_int = 12'h00;
-					imm20_int = 20'h00;
-				end
-			OPCODE_SYSTEM/4	:
-				begin
-					imm12_int = instr_i[31:20];
-					imm20_int = 20'h00;
-				end
-
-			default		:
-				begin
-					imm12_int = 12'h00;
-					imm20_int = 20'h00;
-				end
+			default			: begin end
 		endcase;
 
 	end
-
-
-	/*
-		L'unità di decodifica può estrarre sempre e comunque rs2,rs1,funct3 che sono sempre nelle stesse posizioni. Tramite opcode può
-		indirizzare una batteria di multiplexer che decide se:
-		- l'istruzione è valida
-		- costruisce l'immediato
-		- invia in uscita i bit di funct7 per pilotare la CU
-		- invia verso la CU informazioni relative alla categoria di operazione
-
-		L'indirizzo della micro-ROM sarà probabilmente costruito a partire da funct3,dai bit ci controllo sulla ategoria di opcode ed eventuali bit extra estratti da funct7.		
-	*/
 
 endmodule;

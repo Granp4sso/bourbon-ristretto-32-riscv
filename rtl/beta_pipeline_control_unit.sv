@@ -1,37 +1,58 @@
 //`include "pkg/beta_pkg.sv"
 
 /*
-	Global Pipeline Control Unit v0.2 9/07/2022
+	Pipeline Control Unit v0.3 30/09/2022
 
 	******|| INSTANTIABLES 	||******
 
 	******|| PARAMETERS 	||******
 
 	-DataWidth :		Width of data lines (32 bits or 64 bits)
-	-StageNum :		Number of pipeline stages (3 in Bourbon)
+	-AddrWidth :		Width of addresses
 	
 	******|| INTERFACES 	||******
 
+	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
+	-pcu_ifs_busy_i :		Instruction Fetch Stage busy signal
+	-pcu_ifs_fetch_en_o : 		Enable the IF stage to fetch a new instruction
+	-pcu_decs_busy_i :		Instruction Decode Stage busy signal
+	-pcu_exes_busy_i :		Execution Stage busy signal
+	-pcu_pip0_stall_o : 		Stall the IF-DEC pipeline 
+	-pcu_pip0_flush_o :		Flush the IF-DEC pipeline 	(When pipes are flushed, I'm not using this signal. So it is useless atm.)
+	-pcu_pip1_stall_o :		Stall the DEC-EXE pipeline 
+	-pcu_pip1_flush_o :		Flush the DEC-EXE pipeline 	(When pipes are flushed, I'm not using this signal. So it is useless atm.)
+	-pcu_dec_rsrc1_i :		Decode stage register source 1, used for data hazard detection
+	-pcu_dec_rsrc2_i :		Decode stage register source 2, used for data hazard detection
+	-pcu_r_op_i :			Exe stage requested type operation (Reg operation or not?), used for data hazard detection
+	-pcu_exe_rd_i :			Exe stage requested destination register, used for data hazard detection
+	-pcu_exe_wreq_i :		Exe stage write reg signal, used for data hazard detection
+	-pcu_exe_multi_cycle_i: 	High if a multi-cycle instruction is in the Exe stage, used for data hazard detection
+	-pcu_dec_multi_cycle_i: 	High if a multi-cycle instruction is in the Decode stage, used for data hazard detection
+	-data_hazard_flag_o :		If a data hazard is detected, set this signal
+	-data_hazard_src_o :		If a data hazard is detected, replace the correct source with the forwarding
+	-pcu_exe_trap_flag_i :		A trap has been detected into the exe stage
+	-pcu_exe_bju_en_i :		A Ctrl opcode has been executed into the exe stage
+	-pcu_trap_hazard_flag_o : 	Because of a trap, we have a hazard
+	-pcu_ctrl_hazard_flag_o	:	Because of a Branch or a Jump, we have a hazard
 
 	******|| REMARKABLE 	||******
 
-	
+	 pipeline_controller:
+	 	This process drives a FF used to drive the if fetch signal. 
 
 	******|| NOTES		||******
 
-	The Pipeline control unit is responsible for the Pipeline syncronization and Hazard detection.
-	It will host N ports, where N is the number of pipeline stages. Eache stage will at least support the flush and stall signals.
-	The pipeline is quite inefficient at the moment, because the pip0_stall toggles quite too often uselessly. Moreover, many fetches are performed
-	from the imem, while they are not require. The pipeline still works because the instruction address does not change.
-	Data Hazard Detection V
-
+	The entire unit is quite minimal, which is good. However the pipeline system is sort of a mess. As you can see the entire module is just made of a bunch
+	of assign, but the flush signal is never actually used. Pipeline flushes are handled differently.
+	Stalls works in a weird way, and pipeline0 stall has is periodic which does not break the correct behaviour of the system, but leads to a useless greater energy consumption.
+	Here, an overall rework is required.
 
 */
 
 module beta_pipeline_control_unit import beta_pkg::*; #(
 
 	parameter unsigned DataWidth = 32,
-	parameter unsigned StageNum = 3		//Atm it is not that useful
+	parameter unsigned AddrWidth = 32
 )(
 
 	input  logic 			clk_i,
@@ -82,14 +103,14 @@ module beta_pipeline_control_unit import beta_pkg::*; #(
 	
 );
 
-	logic			pcu_ifs_fetch_en_int;
-	logic			pcu_pip0_stall_int;
-	logic			pcu_pip0_flush_int;
-	logic			pcu_pip1_stall_int;
-	logic			pcu_pip1_flush_int;
+	logic		pcu_ifs_fetch_en_int;
+	logic		pcu_pip0_stall_int;
+	logic		pcu_pip0_flush_int;
+	logic		pcu_pip1_stall_int;
+	logic		pcu_pip1_flush_int;
 
-	logic			ifs_triggered_int;
-	logic fetch_sync_latch;
+	logic		ifs_triggered_int;
+	logic 		fetch_sync_latch;
 	
 	always_ff@(posedge clk_i) begin : pipeline_controller
 	

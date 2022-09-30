@@ -1,7 +1,7 @@
 `include "pkg/beta_dec_stage_pkg.sv"
 
 /*
-	Instruction Decode Stage v0.3 22/05/2022
+	Instruction Decode Stage v0.4 26/08/2022
 
 	******|| INSTANTIABLES 	||******
 
@@ -18,25 +18,33 @@
 	******|| PARAMETERS 	||******
 
 	-DataWidth :		Width of data lines (32 bits or 64 bits)
+	-AddrWidth :		Width of addresses
 	-Compressed :		Presence of compressed instruction extension
 	-Embedded :		Presence of RV32E profile (16 registers instead of 32)
 	
 	******|| INTERFACES 	||******
 
 	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
-	-dec_instr_i :		Instruction fetched from the if stage 		
-	-dec_new_instr_i : 	Is a new instruction data provided?
-	-dec_rd_wdata_i : 	Register Destination data to be written. Forwarded from the exe stage
-	-dec_rd_addr_i : 	Register Destination address to be written. Forwarded from the exe stage	
-	-dec_reg_wr_en_i : 	Register Write Enable. It is forwarded from the exe stage	
-	-dec_offset12_o : 	12-bit Offset decoded from the instruction. It is used for mem and branches operations.
-	-dec_offset20_o : 	20-bit Offset decoded from the instruction. It is used for jumps operations.	
-	-dec_operand_a_o : 	Operand selected from the MUXes and extracted from the instruction. It is forwarded to the exe stage	
-	-dec_operand_b_o : 	Operand selected from the MUXes and extracted from the instruction. It is forwarded to the exe stage	
-	-dec_rd_addr_o : 	Register Destination address sent to the exe stage. It must be forwarded to allow the pipe to work	
-	-dec_control_word_o : 	Control Word computed by the uROM. It holds all the signals to drive this and the following stages.	
-	-if_stage_busy_i : 	Is the Instruction Fetch performing a sequential operation? (e.g. the imem protocol)
-	-dec_stage_busy_o : 	Is the Decode Stage performing sequential operations? (none at the moment)
+	-dec_instr_i :			Instruction fetched from the if stage 		
+	-dec_new_instr_i : 		Is a new instruction data provided?
+	-dec_rd_wdata_i : 		Register Destination data to be written. Forwarded from the exe stage
+	-dec_rd_addr_i : 		Register Destination address to be written. Forwarded from the exe stage	
+	-dec_reg_wr_en_i : 		Register Write Enable. It is forwarded from the exe stage	
+	-dec_offset12_o : 		12-bit Offset decoded from the instruction. It is used for mem and branches operations.
+	-dec_offset20_o : 		20-bit Offset decoded from the instruction. It is used for jumps operations.	
+	-dec_operand_a_o : 		Operand selected from the MUXes and extracted from the instruction. It is forwarded to the exe stage	
+	-dec_operand_b_o : 		Operand selected from the MUXes and extracted from the instruction. It is forwarded to the exe stage	
+	-dec_rd_addr_o : 		Register Destination address sent to the exe stage. It must be forwarded to allow the pipe to work	
+	-dec_control_word_o : 		Control Word computed by the uROM. It holds all the signals to drive this and the following stages.	
+	-if_stage_busy_i : 		Is the Instruction Fetch performing a sequential operation? (e.g. the imem protocol)
+	-dec_stage_busy_o : 		Is the Decode Stage performing sequential operations? (none at the moment)
+	-dec_invalid_instr_o :		If the instruction decoded is illegal, this signal is forwarded high to the next stage
+	-dec_invalid_instrval_o :	If the instruction decoded is illegal, the entire instruction is forwarded to the next stage (for the mtval reg)
+	-dec_rsrc1_addr_o :		The source register 1 address is brough to the pipeline control unit to compute eventual data hazards
+	-dec_rsrc2_addr_o :		The source register 2 address is brough to the pipeline control unit to compute eventual data hazards
+	-dec_forward_en_i :		If a data hazard is detected, the forward signal will ne high
+	-dec_forward_src_i :		If the forward enable is high, select the source register to be replaced with the rd_wdata
+	-dec_shadow_op_b_o :		This signal is the decoded operand b from the decoder, and not the forwarded one because of forward_src
 
 	******|| REMARKABLE 	||******
 
@@ -62,7 +70,9 @@
 	The wr_en signal must be high for exactly 1 clock cycle, so that an exe requested write will occur one time.
 	That's why we need the new instruction signal and latch that event. in this way when we receive a high wr_en signal,
 	the latch is lowered and the write executed. Untill a new instruction is fetched, no new write will be performed.
-	The signal of "new instruction" is now supposed to be forwarded to all further stages. V
+	The signal of "new instruction" is now supposed to be forwarded to all further stages. 
+	
+	if_stage_busy_i is never used at the moment.
 
 */
 
@@ -70,7 +80,7 @@
 module beta_dec_stage import beta_pkg::*; #(
 
 	parameter unsigned DataWidth = 32,
-
+	parameter unsigned AddrWidth = 32,
 	parameter unsigned Compressed = 0,
 	parameter unsigned Embedded = 0
 )(
@@ -129,7 +139,7 @@ module beta_dec_stage import beta_pkg::*; #(
 
 	logic			rd_wr_en_int;
 	logic 			new_instruction_latch;
-	logic 			dec_new_instr_int;	//beta
+	logic 			dec_new_instr_int;	
 	
 	dec_control_word_t 	control_word_int;
 
@@ -171,46 +181,46 @@ module beta_dec_stage import beta_pkg::*; #(
 	beta_decoder decoder (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
-		.instr_i(dec_instr_i),
+		.idec_instr_i(dec_instr_i),
 
-		.rs1_o(rs1_addr_int),
-		.rs2_o(rs2_addr_int),
-		.rd_o(rd_addr_int),
+		.idec_rs1_o(rs1_addr_int),
+		.idec_rs2_o(rs2_addr_int),
+		.idec_rd_o(rd_addr_int),
 
-		.imm12_o(imm12_int),
-		.imm20_o(imm20_int),
+		.idec_imm12_o(imm12_int),
+		.idec_imm20_o(imm20_int),
 
-		.cu_addr_o(cu_address_int),
-		.cu_subaddr_o(cu_subaddr_int),
+		.idec_addr_o(cu_address_int),
+		.idec_subaddr_o(cu_subaddr_int),
 
 
-		.invalid_instr_o(invalid_instr_int)
+		.idec_invalid_instr_o(invalid_instr_int)
 	);
 
 	beta_regfile regfile (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
 
-		.rs1_addr_i(rs1_addr_int),
-		.rs2_addr_i(rs2_addr_int),
-		.rd_addr_i(dec_rd_addr_i),
+		.rf_rs1_addr_i(rs1_addr_int),
+		.rf_rs2_addr_i(rs2_addr_int),
+		.rf_rd_addr_i(dec_rd_addr_i),
 
-		.wr_en_i(rd_wr_en_int),
-		.rd_wdata_i(dec_rd_wdata_i),
+		.rf_wr_en_i(rd_wr_en_int),
+		.rf_rd_wdata_i(dec_rd_wdata_i),
 
-		.rs1_data_o(rs1_data_int),
-		.rs2_data_o(rs2_data_int)
+		.rf_rs1_data_o(rs1_data_int),
+		.rf_rs2_data_o(rs2_data_int)
 
 	);
 	
 	beta_urom urom (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
-		.cu_address_i(cu_address_int),
-		.cu_subaddress_i(cu_subaddr_int),
-		.invalid_instr_i(invalid_instr_int),
+		.urom_address_i(cu_address_int),
+		.urom_subaddress_i(cu_subaddr_int),
+		.urom_invalid_instr_i(invalid_instr_int),
 
-		.control_word_o(control_word_int)
+		.urom_control_word_o(control_word_int)
 	);
 
 	//Multiplexer for operand A selection
@@ -243,8 +253,6 @@ module beta_dec_stage import beta_pkg::*; #(
 			default : operand_b_int = '0;
 		endcase;
 	end
-
-	//as long as the Decode stage is purely combinatorial, the next_pc signal can be forwarded without any delay
 
 	assign dec_next_pc_o = dec_next_pc_i;
 	assign dec_new_instr_o = dec_new_instr_int;

@@ -1,82 +1,58 @@
-//`include "beta_def.sv"
+`include "pkg/beta_dec_stage_pkg.sv"
+`include "pkg/beta_exe_stage_pkg.sv"
 
 /*
-13/05/2022
-Version 0.8
+	Micro-ROM v0.9 26/08/2022
+
+	******|| INSTANTIABLES 	||******
+
+	******|| PARAMETERS 	||******
+
+	-DataWidth :		Width of data lines 
+	-AddrWidth :		Width of addresses
 	
+	******|| INTERFACES 	||******
 
-	- Supported STORE and LOAD instructions (they are immediate instructions, offsets are calculated from ALU)
-		-..
-	- At the moment, the CU is just the microROM. It takes the cu_address bore by the decoder.
+	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
+	
+	-urom_address_i :		This 9 bits are used to address the urom from the instruction decoder
+	-urom_subaddress_i :		5 more bits are used to address specifici SYSTEM instructions
+	-urom_invalid_instr_i :		This bit notifies that an invalid instruction has been injected into the core.  
+	-urom_control_word_o :		The selected control word will bore all the control signals for the entire core execution for the entire instruction life
 
-	- Atm the CU takes the address born by the decoder. It encompasses:
-		--Major opcode (8:4)
-		--Minor opcode (3:1)
-		--Further info extracted from funct7 (0)
+	******|| REMARKABLE 	||******
+	
+	the process into this unit is used to address and produce the control word. For further information check the package describing the control word type.
 
-	- The cu_address_i is used to address che internal micro-ROM/microcode
+	******|| NOTES		||******
 
-	- Base ISA supported except for misc-mem and system. We shall make some assumptions for now, namely:
-		-- Memory interaction exactly takes 1 clock cycle
-		-- Every instruction will complete in 1 clock cycle
-
-	- 2 types of operand 1 selection:
-		-- dec_src1_select = 00 -> Reg src 1
-		-- dec_src1_select = 01 -> Imm 20 src (for LUI and AUIPC)
-
-	- 4 types of operand 2 selection: 
-		-- dec_src2_select = 00 -> Reg src 2
-		-- dec_src2_select = 01 -> Imm 12 src
-		-- dec_src2_select = 10 -> Imm 20 src
-		-- dec_src2_select = 11 -> 0x0c (for LUI and AUIPC)
-
-	- For memory operand
-		-- memory/branch opcode -> Reg src 2 , Imm 12 address offset
-
-	- Control words:
-		-- IMMEDIATES -V
-		-- LUI -V
-		-- AUIPC - V
-		-- REG -V
-		-- BRANCHES -V
-		-- JUMPS -V
-		-- LOAD/STORES -X
-
-	- Notes on branches:
-		--Branches work on comparisons, hence they can reuse the bit used for SLT/SLTU/SLTI/SLTIU
-		--ALU is not going to directly compute the branches. Instead the ALU just evaluates the conditions-
-		--Branch & Jump unit will take care of computing the new address, instantiating predictors etc..
-
-	- Notes on Jumps:
-		--Jump instructions take as a result the PC+4. The ALU is not going to elaborate the PC. beside this we are
-		  going to have a 20 bits offset coming from decoding stage and the Alu will just pass the rs1 as it is.
-		  the BJU will deal directly with the 20 bits offset and the PC, without requiring anything from the ALU.
-		  
 */
 
+module beta_urom import beta_pkg::*; #(
 
-module beta_urom import beta_pkg::*; #()(
+	parameter unsigned DataWidth = 32,
+	parameter unsigned AddrWidth = 32
+)(
 
-	input logic clk_i,
-	input logic rstn_i,
-	input logic[8:0] cu_address_i,
-	input logic[4:0] cu_subaddress_i,
-	input logic invalid_instr_i, 
+	input logic 			clk_i,
+	input logic 			rstn_i,
+	input logic[8:0] 		urom_address_i,
+	input logic[4:0] 		urom_subaddress_i,
+	input logic 			urom_invalid_instr_i, 
 
-	output dec_control_word_t control_word_o
+	output dec_control_word_t 	urom_control_word_o
 	
 );
 
-	//cu_control_word_t[511:0] microROM;
 	dec_control_word_t cw_int;
+	
+	assign urom_control_word_o = (urom_invalid_instr_i) ? '0 : cw_int;
 
-	//assign control_word_o = microROM[cu_address_i];
-
-	assign control_word_o = (invalid_instr_i) ? '0 : cw_int;
-
-	always_comb begin : micro_ROM
+	always_comb begin : urom_addressing
+	
 		cw_int = '0;
-		case(cu_address_i)
+		
+		case(urom_address_i)
 
 			/*0x000*/ {Major_LOAD,Minor_LB,1'b0} : begin
 									cw_int.src_reg_used = 2'b00;
@@ -332,44 +308,44 @@ module beta_urom import beta_pkg::*; #()(
 									cw_int.dec_src1_select = 2'b00; 
 									cw_int.dec_src2_select = 2'b00; 
 									cw_int.exe_bju_en = 2'b01;
-									cw_int.exe_condition_sel = 2'b10; //Select Zero Bit
-									cw_int.exe_condition_neg = 1'b0; //Not complemented
-									cw_int.exe_alu_unsigned_n_en = 1'b0; //Signed comparison
+									cw_int.exe_condition_sel = 2'b10; 	//Select Zero Bit
+									cw_int.exe_condition_neg = 1'b0; 	//Not complemented
+									cw_int.exe_alu_unsigned_n_en = 1'b0; 	//Signed comparison
 								  end
 			/*0x182*/ {Major_BRANCH,Minor_BNE,1'b0} : begin
 									cw_int.src_reg_used = 2'b01; 
 									cw_int.dec_src1_select = 2'b00; 
 									cw_int.dec_src2_select = 2'b00; 
 									cw_int.exe_bju_en = 2'b01;
-									cw_int.exe_condition_sel = 2'b10; //Select Zero Bit 
-									cw_int.exe_condition_neg = 1'b1; //Complement Zero bit
-									cw_int.exe_alu_unsigned_n_en = 1'b0; //Signed comparison
+									cw_int.exe_condition_sel = 2'b10; 	//Select Zero Bit 
+									cw_int.exe_condition_neg = 1'b1; 	//Complement Zero bit
+									cw_int.exe_alu_unsigned_n_en = 1'b0; 	//Signed comparison
 								  end
 			/*0x188*/ {Major_BRANCH,Minor_BLT,1'b0} : begin
 									cw_int.src_reg_used = 2'b01;
 									cw_int.dec_src1_select = 2'b00; 
 									cw_int.dec_src2_select = 2'b00; 
 									cw_int.exe_bju_en = 2'b01;
-									cw_int.exe_condition_sel = 2'b01; //Select Negative Bit 
-									cw_int.exe_condition_neg = 1'b0; //DO not complement Negative bit
-									cw_int.exe_alu_unsigned_n_en = 1'b0; //Signed comparison
+									cw_int.exe_condition_sel = 2'b01; 	//Select Negative Bit 
+									cw_int.exe_condition_neg = 1'b0; 	//DO not complement Negative bit
+									cw_int.exe_alu_unsigned_n_en = 1'b0; 	//Signed comparison
 								  end
 			/*0x18a*/ {Major_BRANCH,Minor_BGE,1'b0} : begin
 									cw_int.dec_src1_select = 2'b00; 
 									cw_int.dec_src2_select = 2'b00; 
 									cw_int.exe_bju_en = 2'b01;
-									cw_int.exe_condition_sel = 2'b01; //Select Negative Bit 
-									cw_int.exe_condition_neg = 1'b1; //complement Negative bit
-									cw_int.exe_alu_unsigned_n_en = 1'b0; //Signed comparison
+									cw_int.exe_condition_sel = 2'b01; 	//Select Negative Bit 
+									cw_int.exe_condition_neg = 1'b1; 	//complement Negative bit
+									cw_int.exe_alu_unsigned_n_en = 1'b0; 	//Signed comparison
 								  end
 			/*0x18c*/ {Major_BRANCH,Minor_BLTU,1'b0} : begin
 									cw_int.src_reg_used = 2'b01;
 									cw_int.dec_src1_select = 2'b00; 
 									cw_int.dec_src2_select = 2'b00; 
 									cw_int.exe_bju_en = 2'b01;
-									cw_int.exe_condition_sel = 2'b01; //Select Negative Bit 
-									cw_int.exe_condition_neg = 1'b0; //DO not complement Negative bit
-									cw_int.exe_alu_unsigned_n_en = 1'b1; //Unsigned comparison
+									cw_int.exe_condition_sel = 2'b01; 	//Select Negative Bit 
+									cw_int.exe_condition_neg = 1'b0; 	//DO not complement Negative bit
+									cw_int.exe_alu_unsigned_n_en = 1'b1; 	//Unsigned comparison
 									//Dec not sign is not raised because it works onty for immediates and not registers
 								   end
 			/*0x18e*/ {Major_BRANCH,Minor_BGEU,1'b0} : begin
@@ -377,30 +353,30 @@ module beta_urom import beta_pkg::*; #()(
 									cw_int.dec_src1_select = 2'b00; 
 									cw_int.dec_src2_select = 2'b00; 
 									cw_int.exe_bju_en = 2'b01;
-									cw_int.exe_condition_sel = 2'b01; //Select Negative Bit 
-									cw_int.exe_condition_neg = 1'b1; //complement Negative bit
-									cw_int.exe_alu_unsigned_n_en = 1'b1; //Unsigned comparison
+									cw_int.exe_condition_sel = 2'b01; 	//Select Negative Bit 
+									cw_int.exe_condition_neg = 1'b1; 	//complement Negative bit
+									cw_int.exe_alu_unsigned_n_en = 1'b1; 	//Unsigned comparison
 									//Dec not sign is not raised because it works onty for immediates and not registers
 								   end
 
 			/*0x190*/ {Major_JALR,3'b000,1'b0} : begin
 									cw_int.src_reg_used = 2'b01;
-									cw_int.dec_src1_select = 2'b00; //Reg selection on src 1. It will be unused
-									cw_int.dec_src2_select = 2'b01; //Select immediate 12 bits
-									cw_int.exe_bju_en = 2'b11; //enable Jumps + register source
+									cw_int.dec_src1_select = 2'b00; 	//Reg selection on src 1. It will be unused
+									cw_int.dec_src2_select = 2'b01; 	//Select immediate 12 bits
+									cw_int.exe_bju_en = 2'b11;		//enable Jumps + register source
 									cw_int.exe_reg_wr_en = 1'b1;
 								end
 
 			/*0x1b0*/ {Major_JAL,3'b000,1'b0} : 	begin
 									cw_int.src_reg_used = 2'b10;
-									cw_int.dec_src1_select = 2'b00; //Reg selection on src 1. It will be unused
-									cw_int.dec_src2_select = 2'b10; //Select immediate 20 bits
-									cw_int.exe_bju_en = 2'b10; //enable Jump
+									cw_int.dec_src1_select = 2'b00; 	//Reg selection on src 1. It will be unused
+									cw_int.dec_src2_select = 2'b10; 	//Select immediate 20 bits
+									cw_int.exe_bju_en = 2'b10; 		//enable Jump
 									cw_int.exe_reg_wr_en = 1'b1;
 								end
 								
 			/*0x1c0*/ {Major_SYSTEM,Minor_PRIV,1'b0} : 	begin
-									case( cu_subaddress_i )
+									case( urom_subaddress_i )
 									/*0x00*/	Minor_PRIV_ECALL : begin
 												cw_int.exe_sys_priv_en = 2'b01;
 											end

@@ -11,11 +11,16 @@ Version 0.7
 	-Integrating the pipeline control unit (still alpha)
 */
 
+import beta_exe_stage_pkg::*;
+import beta_dec_stage_pkg::*;
+import beta_if_stage_pkg::*;
+import beta_csr_pkg::*;
+import beta_trap_pkg::*;
 
-module beta_top import beta_pkg::*; #(
+module beta_top #(
 
 	parameter unsigned DataWidth = 32,
-	parameter unsigned AddressWidth = 32
+	parameter unsigned AddrWidth = 32
 
 	)(
 
@@ -34,14 +39,14 @@ module beta_top import beta_pkg::*; #(
 	input  logic			rdata_ready_i,
 	input  logic			rdata_valid_i,
 	input  logic[DataWidth-1:0] 	rdata_data_i,
-	output logic[AddressWidth-1:0] 	rdata_addr_o,
+	output logic[AddrWidth-1:0] 	rdata_addr_o,
 	output logic[DataWidth/8-1:0]	rdata_strb_o,
 	output logic 			rdata_req_o,
 
 	input  logic			wdata_ready_i,
 	input  logic			wdata_valid_i,
 	output logic[DataWidth-1:0] 	wdata_data_o,
-	output logic[AddressWidth-1:0] 	wdata_addr_o,
+	output logic[AddrWidth-1:0] 	wdata_addr_o,
 	output logic[DataWidth/8-1:0]	wdata_strb_o,
 	output logic 			wdata_req_o,
 
@@ -61,8 +66,8 @@ module beta_top import beta_pkg::*; #(
 	logic[DataWidth-1:0] 	result_int;
 	logic[11:0] 		dec_offset12_int;
 	logic[19:0] 		dec_offset20_int;
-	logic[XLEN-1:0] 	dec_operand_a_int;
-	logic[XLEN-1:0] 	dec_operand_b_int;
+	logic[DataWidth-1:0] 	dec_operand_a_int;
+	logic[DataWidth-1:0] 	dec_operand_b_int;
 	logic[4:0] 		dec_rd_addr_int;
 	logic[4:0] 		exe_rd_addr_int;
 	dec_control_word_t 	dec_control_word_int;
@@ -101,8 +106,8 @@ module beta_top import beta_pkg::*; #(
 
 	logic[11:0] 		pip1_offset12_int;
 	logic[19:0] 		pip1_offset20_int;
-	logic[XLEN-1:0] 	pip1_operand_a_int;
-	logic[XLEN-1:0] 	pip1_operand_b_int;
+	logic[DataWidth-1:0] 	pip1_operand_a_int;
+	logic[DataWidth-1:0] 	pip1_operand_b_int;
 	logic[4:0] 		pip1_rd_addr_int;
 	dec_control_word_t 	pip1_control_word_int;
 	logic[DataWidth-1:0]	pip1_next_pc_int;
@@ -121,19 +126,41 @@ module beta_top import beta_pkg::*; #(
 	logic			pcu_pip0_flush_int;
 	logic			pcu_pip1_stall_int;
 	logic			pcu_pip1_flush_int;
-
-	//System Reset Area
-
-	logic first_reset;
-
-	always_ff@(posedge clk_i) begin: first_reset_proc
-		if(rstn_i == 1'b0) begin
-			first_reset <= 1'b1;
-		end
-		else begin
-			first_reset <= 1'b0;
-		end
-	end
+	
+	/* Data Hazard Signals begin*/
+	
+	logic[1:0] pcu_r_op_int = dec_control_word_int.src_reg_used;
+	logic pcu_exe_wreq_int = pip1_control_word_int.exe_reg_wr_en;
+	logic[4:0] pcu_exe_rd_int = exe_rd_addr_int;
+	logic[4:0] dec_shadow_op_b_int;
+	
+	/*
+		FOR FUTURE DEVELOPMENTS: atm multicycle is computed in the exe_cu as well. Instead, compute it only in the dec stage and append it to the control world.
+	*/
+	
+	logic pcu_dec_shift_cond_int = dec_control_word_int.exe_shu_shift_en != SHIFT_NONE;
+	logic pcu_dec_shift_size_int = dec_shadow_op_b_int >= 5'h02;
+	logic pcu_dec_mem_cond_int = dec_control_word_int.exe_mem_op_en;
+	logic pcu_dec_multi_cycle_int = (pcu_dec_shift_cond_int & pcu_dec_shift_size_int) | pcu_dec_mem_cond_int; 
+	
+	logic pcu_exe_shift_cond_int = pip1_control_word_int.exe_shu_shift_en != SHIFT_NONE;
+	logic pcu_exe_shift_size_int = pip1_operand_b_int[4:0] >= 5'h02;
+	logic pcu_exe_mem_cond_int = pip1_control_word_int.exe_mem_op_en;
+	logic pcu_exe_multi_cycle_int = (pcu_exe_shift_cond_int & pcu_exe_shift_size_int) | pcu_exe_mem_cond_int; 
+					
+	logic data_hazard_flag_int;
+	logic[1:0] data_hazard_src_int;
+	
+	/* Data Hazard Signals end*/
+	
+	/* Control Hazard Signals begin*/
+	
+	logic [1:0] exe_bju_active_int;
+	logic[1:0] pcu_exe_bju_en_int =  exe_bju_active_int;
+	logic[1:0] pcu_ctrl_hazard_flag_int;
+	logic[1:0] pcu_trap_hazard_flag_int;
+	
+	/* Control Hazard Signals end*/
 
 	//Instantiating Instruction Fetch Stage
 
@@ -273,10 +300,12 @@ module beta_top import beta_pkg::*; #(
 
 		/* Pipeline Control Unit signals*/
 	
-		.pip_stall_i(pcu_pip1_stall_int | (~pcu_pip1_stall_int & pcu_trap_hazard_flag_int[0] & ~reg_wr_en_int)),
+		.pip_stall_i(pcu_pip1_stall_int /*| (~pcu_pip1_stall_int & pcu_trap_hazard_flag_int[0] & ~reg_wr_en_int)*/),
 		.pip_flush_i(pcu_pip1_flush_int)
 	);
 
+
+	
 	beta_exe_stage #(
 		.DataWidth(DataWidth)
 	) exe_stage (
@@ -295,7 +324,6 @@ module beta_top import beta_pkg::*; #(
 		
 		.exe_new_instr_i(pip1_new_instr_int),	
 
-		.exe_alu_op_end_o(alu_op_end_int),
 		.exe_next_pc_o(next_pc_int),
 		.exe_result_o(result_int),
 
@@ -308,6 +336,7 @@ module beta_top import beta_pkg::*; #(
 		.exe_instr_penality_i(pip1_penality_int),
 		.dec_stage_busy_i(dec_stage_busy_int),
 		.exe_stage_busy_o(exe_stage_busy_int),
+		.exe_bju_active_o(exe_bju_active_int),
 		.exe_branch_taken_o(exe_branch_taken_int),
 		.exe_trap_taken_o(exe_trap_taken_int),
 		
@@ -330,44 +359,10 @@ module beta_top import beta_pkg::*; #(
 	);
 
 	//Pipeline control unit
-	
-	/* Data Hazard Signals begin*/
-	
-	logic[1:0] pcu_r_op_int = dec_control_word_int.src_reg_used;
-	logic pcu_exe_wreq_int = pip1_control_word_int.exe_reg_wr_en;
-	logic[4:0] pcu_exe_rd_int = exe_rd_addr_int;
-	logic[4:0] dec_shadow_op_b_int;
-	
-	/*
-		FOR FUTURE DEVELOPMENTS: atm multicycle is computed in the exe_cu as well. Instead, compute it only in the dec stage and append it to the control world.
-	*/
-	
-	logic pcu_dec_shift_cond_int = dec_control_word_int.exe_shu_shift_en != SHIFT_NONE;
-	logic pcu_dec_shift_size_int = dec_shadow_op_b_int >= 5'h02;
-	logic pcu_dec_mem_cond_int = dec_control_word_int.exe_mem_op_en;
-	logic pcu_dec_multi_cycle_int = (pcu_dec_shift_cond_int & pcu_dec_shift_size_int) | pcu_dec_mem_cond_int; 
-	
-	logic pcu_exe_shift_cond_int = pip1_control_word_int.exe_shu_shift_en != SHIFT_NONE;
-	logic pcu_exe_shift_size_int = pip1_operand_b_int[4:0] >= 5'h02;
-	logic pcu_exe_mem_cond_int = pip1_control_word_int.exe_mem_op_en;
-	logic pcu_exe_multi_cycle_int = (pcu_exe_shift_cond_int & pcu_exe_shift_size_int) | pcu_exe_mem_cond_int; 
-					
-	logic data_hazard_flag_int;
-	logic[1:0] data_hazard_src_int;
-	
-	/* Data Hazard Signals end*/
-	
-	/* Control Hazard Signals begin*/
-	
-	logic[1:0] pcu_exe_bju_en_int =  pip1_control_word_int.exe_bju_en;
-	logic[1:0] pcu_ctrl_hazard_flag_int;
-	logic[1:0] pcu_trap_hazard_flag_int;
-	
-	/* Control Hazard Signals end*/
 
 	beta_pipeline_control_unit #(
 		.DataWidth(DataWidth),
-		.StageNum(3)
+	   	.AddrWidth(AddrWidth)
 	) pcu (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),

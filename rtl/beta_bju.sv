@@ -1,59 +1,77 @@
-//s`include "beta_def.sv"
 
 /*
-8/05/2022
-Version 0.3
+	Branch & Jump Unit v0.4 27/08/2022
 
-	Corrected some bugs
+	******|| INSTANTIABLES 	||******
 
-	Branch & Jump unit
-	-It takes the offset, the PC and the alu status. It reads from the control words which alu status bit has to be evaluated and
-	 if it must be taken as set or reset. It computes the next program counter sent to the PC.
-	-If bju_en = 00, PC will be output. PS: PC+4 will be computed into the exe stage externally to the BJU unit because it is also used 
-	 as a possible result, hence it must be computed in parallel.
+	******|| PARAMETERS 	||******
 
-	-Predictors might be instantiated here
+	-DataWidth :		Width of data lines (32 bits or 64 bits)
+	-AddrWidth :		Width of addresses
+	
+	******|| INTERFACES 	||******
 
-	-Exception path will interact with BJU
+	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
+	
+	-bju_pc_i :			The execution stage current program counter.
+	-bju_offset12_i :		The 12 bit offset coming from the decode stage (used for Branches and JALRs)
+	-bju_offset20_i :		The 20 bit offset coming from the decode stage (used for JALs)
+	-bju_basereg_i :		The base register used for branches and jalrs.
+	-bju_alu_stat_i :		ALU status bits, used to evaluate branches
+	-bju_op_i :			Bju required operation (control signal). 00 none, 01 branch, 10 jal, 11 jalr
+	-bju_misalig_pc_o :		Misaligned address has been computed
+	-bju_next_pc_o :		Next program counter. It will be sent to the Instruction Fetch stage
+	-bju_branch_taken_o :		If a branch has been taken, it will be 1.
 
-	-At the moment I forsee 2 offsets, 12 and 20 bits long, respectively for branches and jumps. in future I'd like to support a single
-	 20 bits offset and interpret it as a 12 or 20 bits depending on the specific kind of control (b or j)
+	******|| REMARKABLE 	||******
+	
+	bju_misalig_address:
+	
+		If the lower two bits of the new PC are different from 00 raise an exception
+		
+	bju_compute_next_pc:
+	
+		This process elaborates the next pc based on the required operation.
 
-	BRANCHES
-	-Takes offset_12, sign extend it and then adds it to the PC
 
-	JAL
-	-Takes offset_20, sign extend it and then adds it to the PC
+	******|| NOTES		||******
 
-	JALR
-	-JALR can work exactly as a JAL but we must take the rs1 data. Therefore we can drive operand_a signal into BJI as well.
+	The BJU takes the offset, the PC and the alu status. It reads from the control words which alu status bit has to be evaluated and
+	if it must be taken as set or reset. In this way we can compute all branches conditions only using 3 bits. 
+	If bju_en = 00, current PC will be the output. PS: PC+4 will be computed into the exe stage externally to the BJU unit.
 
-	-Handled Branches and base Jump bit 0 forced to 0 (2 alignemnt). an exception will be raised in case of misaligned addresses
-	 (not aligned on a power of 4)
+	BRANCHES : 	Takes offset_12, sign extend it and then adds it to the PC
+	JAL : 		Takes offset_20, sign extend it and then adds it to the PC
+	JALR : 		JALR can work exactly as a JAL but we must take the rs1 data. Therefore we can drive operand_a signal into BJU as well.
+
+	Branches and Jump addresses have bit 0 forced to 0 (2 alignment). an exception will be raised in case of misaligned addresses
+	(not aligned on a power of 4)
+
 */
 
 
 module beta_bju import beta_pkg::*; #(
-	parameter integer unsigned DATAWIDTH = 32
+	parameter unsigned DataWidth = 32,
+	parameter unsigned AddrWidth = 32
 )
 (
 	input logic 			clk_i,
 	input logic			rstn_i,
 
-	input logic[DATAWIDTH-1:0] 	bju_pc_i,
+	input logic[DataWidth-1:0] 	bju_pc_i,
 	input logic[11:0]		bju_offset12_i,
 	input logic[19:0]		bju_offset20_i,
-	input logic[DATAWIDTH-1:0]	bju_basereg_i,
+	input logic[DataWidth-1:0]	bju_basereg_i,
 	input exe_alu_status_t		bju_alu_stat_i,
 	input exe_bju_op_t		bju_op_i,
 
 	output logic			bju_misalig_pc_o,
-	output logic[DATAWIDTH-1:0] 	bju_next_pc_o,
+	output logic[DataWidth-1:0] 	bju_next_pc_o,
 	output logic 			bju_branch_taken_o
 	
 );
-	logic[DATAWIDTH-1:0] 	bju_next_pc_int;
-	logic[DATAWIDTH-1:0] 	bju_selected_data_int;
+	logic[DataWidth-1:0] 	bju_next_pc_int;
+	logic[DataWidth-1:0] 	bju_selected_data_int;
 	logic			bju_branch_taken_int;
 	logic			bju_misalig_pc_int;
 
@@ -94,10 +112,6 @@ module beta_bju import beta_pkg::*; #(
 	assign bju_branch_taken_o = bju_branch_taken_int;
 	assign bju_misalig_pc_o = bju_misalig_pc_int;
 	assign bju_next_pc_o = ( bju_misalig_pc_int ) ? bju_pc_i : bju_next_pc_int;
-
-
-
-
 
 
 endmodule;

@@ -1,7 +1,7 @@
 `include "pkg/beta_if_stage_pkg.sv"
 
 /*
-	Fetch Unit v0.1 22/05/2022
+	Fetch Unit v0.2 26/08/2022
 
 	******|| INSTANTIABLES 	||******
 						- CodeType,	Mandatory,	Supported
@@ -14,13 +14,16 @@
 	******|| INTERFACES 	||******
 
 	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
-	-if_fu_fetch_en_i : 	Enables new instruction fetch
-	-if_fu_instr_ready_i :	Instruction memory is ready to serve a data
-	-if_fu_instr_valid_i :	Instruction memory provided a valid data
-	-if_fu_instr_rdata_i :	Instruction memory provided data
-	-if_fu_instr_req_o :	Fetch Unit requesting a new instruction
-	-if_fu_instr_o :	New instruction read from the instruction memory
-	-if_fu_stage_busy_o :	The if stage is busy. (i.e. sequential operations are running, like the imem protocol)
+	-if_fu_fetch_en_i : 		Enables new instruction fetch
+	-if_fu_instr_ready_i :		Instruction memory is ready to serve a data
+	-if_fu_instr_valid_i :		Instruction memory provided a valid data
+	-if_fu_instr_rdata_i :		Instruction memory provided data
+	-if_fu_instr_req_o :		Fetch Unit requesting a new instruction
+	-if_fu_instr_o :		New instruction read from the instruction memory
+	-if_fu_stage_busy_o :		The if stage is busy. (i.e. sequential operations are running, like the imem protocol)
+	-if_fu_penality_o:		Once a Jump/Branch/Trap is taken, this bit is raised. A Penality NOP is then injected into the pipe (2'b00 No Penality, 2'b01 Ctrl Penality, 2'b10 Trap penality)
+	-if_fu_trap_hazard_flag_i:	A trap hazard has been detected. Set the penality and inject the NOP
+	-if_fu_ctrl_hazard_flag_i	A control hazard has been detected. Set the penality and inject the NOP
 
 	******|| REMARKABLE 	||******
 
@@ -36,7 +39,7 @@
 	from the memory. 
 	In the future I'd like to support an AMBA like protocol, maybe with an external controller. So the Imem hierarchy should
 	look as:
-		-Instruction Memory <-> AMBA Protocol Converter <-> Fetch Unit <-> iCache <-> TCM <-> Prefetch Buffer <-> IF stage 
+		-Instruction Memory <-> AMBA/Whatever Protocol Converter <-> Fetch Unit <-> iCache <-> TCM <-> Prefetch Buffer <-> IF stage 
 
 	Given an ideal 1 clk cycle response, the protocol takes 3 clock cycles from the request to the outside to the provisioniong of the
 	new instruction.
@@ -58,7 +61,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 	output logic[DataWidth-1:0]	if_fu_instr_o,
 	output logic			if_fu_new_instr_o,
 	output logic			if_fu_stage_busy_o,
-	output logic[1:0]		if_fu_penality_o,		//2'b00 No Penality, 2'b01 Ctrl Penality, 2'b10 Trap penality
+	output logic[1:0]		if_fu_penality_o,		
 	
 	input logic			if_fu_trap_hazard_flag_i,
 	input logic			if_fu_ctrl_hazard_flag_i
@@ -70,10 +73,6 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 	logic				new_instr_int;
 
 	logic[imem_fsm_bsize-1:0] 	imem_state_int;
-	
-	//This FF is used to record the occurrence of a trap. A NOP is injected into the pipe until a new instruction is fetched
-	
-	logic 				fu_trap_hazard_ff_int;
 
 	always_ff@(posedge clk_i) begin: imem_protocol
 		if(rstn_i == 1'b0) begin
@@ -81,7 +80,6 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 			if_stage_busy_int <= 1'b0;
 			new_instr_int <= 1'b0;
 			imem_state_int <= IMEM_IDLE;
-			fu_trap_hazard_ff_int <= 1'b0;
 		end
 		else begin
 			case(imem_state_int)
@@ -91,7 +89,6 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 					if_stage_busy_int <= 1'b1;
 					instr_req_int <= 1'b1;
 					imem_state_int <= IMEM_WRDY;
-					fu_trap_hazard_ff_int <= 1'b0;
 				end
 				new_instr_int <= 1'b0;
 			end
@@ -115,11 +112,9 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 			endcase
 			
 		end
-		
-		if( if_fu_trap_hazard_flag_i ) begin fu_trap_hazard_ff_int <= 1'b1; end
 	end
 
-	assign if_fu_instr_o = ( if_fu_ctrl_hazard_flag_i | if_fu_trap_hazard_flag_i /*| fu_trap_hazard_ff_int*/ ) ? 32'h00000013 : instr_int;  //inject a NOP if a ctrl hazard or a trap hazard is detected
+	assign if_fu_instr_o = ( if_fu_ctrl_hazard_flag_i | if_fu_trap_hazard_flag_i ) ? 32'h00000013 : instr_int;  //inject a NOP if a ctrl hazard or a trap hazard is detected
 	assign if_fu_penality_o[0] = ( if_fu_ctrl_hazard_flag_i ) ? 1'b1 : 1'b0;
 	assign if_fu_penality_o[1] = ( if_fu_trap_hazard_flag_i ) ? 1'b1 : 1'b0;
 	assign if_fu_instr_req_o = instr_req_int;
@@ -127,6 +122,7 @@ module beta_fetch_unit import beta_if_stage_pkg::*; #(
 	assign if_fu_new_instr_o = new_instr_int;
 
 endmodule;
+
 
 
 
