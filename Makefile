@@ -2,13 +2,13 @@
 #Variables
 
 VERILATOR = /usr/share/verilator/include
-FILENAME =  beta_top
-OLDFILENAME = beta_if_stage
+FILENAME =  ristretto_top
+OLDFILENAME = ristretto_if_stage
 TESTBENCH = c_tb/$(FILENAME)_tb
 TESTBENCH_DEP = c_tb/mem
 
 
-WARNINGSBYPASS = -Wno-UNUSED -Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET #-Wno-LATCH 
+WARNINGSBYPASS = -Wno-UNUSED -Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET -Wno-IMPORTSTAR #-Wno-LATCH 
 
 #Targets
 
