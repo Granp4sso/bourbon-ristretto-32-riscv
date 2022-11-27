@@ -87,22 +87,24 @@ module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
 	logic				test_pb_fu_pendinginstr_int;
 	
 	logic				test_pb_instr_tag_int;
+	logic				test_pb_LINIO_int;			//Last Instruction - New Instruction - Overlap
+	logic				test_pb_RIAF_int;			//Reject Instruction Adter Flush
 	
 	// 0-latency passthrough
 	
-	assign buffer_empty_int = ~|test_buffer_fillmask_int;//( buffer_head_int == buffer_tail_int );
-	//assign buffer_headinc_int = buffer_head_int + 1;
-	assign buffer_full_int = &test_buffer_fillmask_int;//( ( buffer_headinc_int ) == buffer_tail_int );
+	assign buffer_empty_int = ~|test_buffer_fillmask_int;
+	assign buffer_full_int = &test_buffer_fillmask_int;
 	
 	always_comb begin : passthrough
 	
+		test_pb_LINIO_int = buffer_new_instr_int & buffer_empty_int;
 		pb_fu_fetch_int = ( ~if_pb_fu_busy_i & ~buffer_full_int ) ? 1'b1 : 1'b0;
 		
 		if( pb_active_int & (if_pb_trap_hazard_flag_i | if_pb_ctrl_hazard_flag_i) ) begin
 			//Se il flag è alto contemporaneamente all'fu fetch, non cambiare niente (usare l'fu state forse sarebbe meglio)
 			//in caso contrario inietta una NOP nella pipe e il pc - 4.
-			instr_int = {{(DataWidth-8){1'b0}},8'h13}; //( buffer_empty_int & ~buffer_new_instr_int & if_pb_fetch_en_i ) ? if_pb_instr_i : buffer_instr_int ;
-			//current_pc_int = if_pb_current_pc_i - 4 ;
+			instr_int = {{(DataWidth-8){1'b0}},8'h13}; 
+
 		end
 		else begin
 			instr_int = ( buffer_empty_int & ~buffer_new_instr_int & if_pb_fetch_en_i ) ? if_pb_instr_i : buffer_instr_int ;	
@@ -131,13 +133,15 @@ module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
 			
 			test_pb_fu_pendinginstr_int <= '0;
 			test_pb_instr_tag_int <= '0;
-			
-			
+			test_pb_RIAF_int <= '0;
+				
 		end
-		else if( (if_pb_trap_hazard_flag_i | if_pb_ctrl_hazard_flag_i) & ~buffer_empty_int ) begin	//Flush the buffer
-			buffer_mem_int <= '0;
+		else if( (if_pb_trap_hazard_flag_i | if_pb_ctrl_hazard_flag_i) & (~buffer_empty_int | test_pb_LINIO_int) ) begin	//Flush the buffer
+			/*buffer_mem_int <= '0;
 			buffer_head_int <= '0;
-			buffer_tail_int <= '0;
+			buffer_tail_int <= '0;*/
+			
+			buffer_head_int <= buffer_tail_int;
 			buffer_pc_int <= '0;
 			test_buffer_fillmask_int <= '0;
 			
@@ -148,6 +152,8 @@ module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
 			
 			test_pb_fu_pendinginstr_int <= '0;
 			test_pb_instr_tag_int <= '0;
+			
+			test_pb_RIAF_int <= ( if_pb_fu_new_instr_i ) ? 1'b0 : 1'b1;
 		end
 		else begin
 		
@@ -164,7 +170,8 @@ module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
 			if( ~buffer_full_int ) begin							//Buffer is not full
 				if( if_pb_fu_new_instr_i | test_pb_fu_pendinginstr_int) begin		//FU has a new instruction and no fetch from the core has been required yet
 				
-					if( (~if_pb_fetch_en_i & buffer_empty_int ) | ~buffer_empty_int ) begin /*& ( pb_race_cond_int | ~if_pb_fetch_en_i )*/
+					// first instruction condition, writing on a non empty buffer condition, writing a new instruction overlapping to the last instruction fetch
+					if( (~if_pb_fetch_en_i & buffer_empty_int ) | ~buffer_empty_int | test_pb_LINIO_int ) begin 
 					
 						if( buffer_empty_int ) begin							//First write into the buffer
 							buffer_pc_int <= if_pb_current_pc_i - 4;
@@ -176,16 +183,12 @@ module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
 						buffer_head_int <= buffer_head_int + 1;		
 						
 						test_pb_fu_pendinginstr_int <= '0;	
-						
-						if( if_pb_fu_new_instr_i & if_pb_fetch_en_i ) pb_race_cond_int <= 1'b0;		//handling last overlapping instruction
 					end
 
 				end			
 			end
 			
 			//Reading from the buffer
-			
-			//buffer_instr_int <= if_pb_instr_i ;
 			
 			if( if_pb_fetch_en_i ) begin
 			
@@ -204,18 +207,17 @@ module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
 				end
 			end
 			else  begin buffer_new_instr_int <= 1'b0 ; end
-			//else if( buffer_new_instr_int ) begin buffer_new_instr_int <= 1'b0 ; end
 			
-			//if( buffer_new_instr_int ) begin buffer_new_instr_int <= 1'b0 ; end
+			//Reset Reject Instruction After Flush FF
 			
+			test_pb_RIAF_int <= 1'b0;
 			
-			
-			
+		
 		end
 	end
 	
 	assign if_pb_instr_o = instr_int;
-	assign if_pb_new_instr_o = new_instr_int;
+	assign if_pb_new_instr_o = new_instr_int & ~test_pb_RIAF_int;
 	assign if_pb_busy_o = 0;
 	assign if_pb_penality_o = '0;
 	assign if_pb_fu_fetch_o = pb_fu_fetch_int;
