@@ -181,7 +181,7 @@ module ristretto_trap_control_unit import ristretto_csr_pkg::*;import ristretto_
 	
 		if( tcu_trap_detected_int != TCU_NOTRAP ) begin
 		
-			tcu_csr_we_int <= ( tcu_csr_we_int ) ? 1'b0 : 1'b1;
+			tcu_csr_we_int <= 1'b1;//( tcu_csr_we_int ) ? 1'b0 : 1'b1;
 			
 			if( ~tcu_env_exception_i[1] ) begin 	//In case of no Return
 			

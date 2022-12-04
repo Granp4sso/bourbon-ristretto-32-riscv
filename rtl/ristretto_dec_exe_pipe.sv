@@ -113,7 +113,7 @@ module ristretto_dec_exe_pipe #(
 			pip_new_instr_pending_ff_int <= '0;
 			pip_flush_pending_int <= '0;
 		end
-		else if( ~pip_stall_i /*& ~pip_flush_i*/ ) begin
+		else if( ~pip_stall_i ) begin
 		
 			if( pip_new_instr_i | pip_new_instr_pending_ff_int ) begin
 			
@@ -136,51 +136,18 @@ module ristretto_dec_exe_pipe #(
 			end
 			
 		end
-		else if( pip_stall_i /*& ~pip_flush_i*/ ) begin
+		else if( pip_stall_i ) begin
 		
 			if( pip_new_instr_i ) begin
 				pip_new_instr_pending_ff_int <= 1'b1;
 				pip_new_instr_ff_int <= 1'b0;
 			end
+			else if( pip_new_instr_ff_int ) begin pip_new_instr_ff_int <= 1'b0; end
 			
 		end
-		/*else if( pip_flush_i ) begin
-			pip_new_instr_pending_ff_int <= 1'b0;
-			pip_new_instr_ff_int <= 1'b0;
-			
-			
-		end*/
+
 	end
-	
-	/*always_ff@(posedge clk_i) begin : reg_process		
-		if( rstn_i == 1'b0 | pip_flush_i == 1'b1 ) begin
-			pip_offset12_int <= '0;
-			pip_offset20_int <= '0;
-			pip_operand_a_int <= '0;
-			pip_operand_b_int <= '0;
-			pip_rd_addr_int <= '0;
-			pip_control_word_int <= '0;
-			pip_next_pc_int <= '0;	
-			pip_new_instr_int <= '0;
-			pip_invalid_instr_int <= '0;
-			pip_invalid_instrval_int <= '0;
-			pip_penality_int <= '0;
-		end
-		else if( pip_stall_i == 1'b0 ) begin			//if an interrupt occurs, wait untill it has been correctly handled before overwriting the next
-			pip_offset12_int <= pip_offset12_i;
-			pip_offset20_int <= pip_offset20_i;
-			pip_operand_a_int <= pip_operand_a_i;
-			pip_operand_b_int <= pip_operand_b_i;
-			pip_rd_addr_int <= pip_rd_addr_i;
-			pip_control_word_int <= pip_control_word_i;
-			pip_next_pc_int <= pip_next_pc_i;
-			pip_invalid_instr_int <= pip_invalid_instr_i;
-			pip_invalid_instrval_int <= pip_invalid_instrval_i;
-			pip_penality_int <= pip_penality_i;
-		end
-		
-		pip_new_instr_int <= pip_new_instr_i;
-	end*/
+
 	
 	assign pip_offset12_o = pip_offset12_int;
 	assign pip_offset20_o = pip_offset20_int;

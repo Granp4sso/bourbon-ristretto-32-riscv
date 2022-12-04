@@ -254,7 +254,7 @@ module ristretto_exe_cu #(
 		else if( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 & ~shift_latch[1] & ~execu_trap_taken_int[1] ) begin	//Shift latch must be < 0b10, (Exception Condition 2)
 			case(shift_fsm)
 				2'b00: begin
-					if((execu_shu_en_int == 1'b0 | execu_shu_busy_i == 1'b0) &  new_instr_latch)begin
+					if((execu_shu_en_int == 1'b0 | execu_shu_busy_i == 1'b0) &  execu_new_instr_i)begin
 						execu_shu_en_int <= 1'b1;
 						shift_fsm <= 2'b01;
 					end
@@ -290,7 +290,7 @@ module ristretto_exe_cu #(
 		else if( execu_control_word_i.exe_mem_op_en == 1'b1 & ~lsu_latch[1] & ~execu_trap_taken_int[1] ) begin	//LSU latch must be < 0b10 , (Exception Condition 2)
 			case(lsu_fsm)
 				2'b00: begin
-					if((execu_lsu_en_int == 1'b0 | execu_lsu_busy_i == 1'b0)  &  new_instr_latch) begin
+					if((execu_lsu_en_int == 1'b0 | execu_lsu_busy_i == 1'b0)  &  execu_new_instr_i) begin
 						execu_lsu_en_int <= 1'b1;
 						lsu_fsm <= 2'b01;
 					end
@@ -312,12 +312,20 @@ module ristretto_exe_cu #(
 		end
 	end
 
+	logic	event_new_instr_ff;
+	logic	event_over;
+	logic	event_busy_int;
+	
+	
+	assign event_busy_int = (event_new_instr_ff | (execu_new_instr_i & multi_cycle_op)) & ~event_over;
+	
 	/* Event Handler Units : it is meant to handle events such as multicycle opcodes and write requests */
 	assign execu_reg_wr_en_int = mc_write_latch | (~multi_cycle_op & execu_new_instr_i & execu_control_word_i.exe_reg_wr_en ) & ~execu_trap_taken_int[1];
 	
-	assign multi_cycle_op = ( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 ) | execu_control_word_i.exe_mem_op_en;	//This signal will depend on the triggering event signals
-	//assign execu_reg_wr_en_int = mc_write_latch | (~multi_cycle_op & new_instr_latch & execu_control_word_i.exe_reg_wr_en ) & ~execu_trap_taken_int[1]; //(Exception Condition 1)
-	assign event_flag = ( shift_latch == 2'b10 ) | 	( lsu_latch == 2'b10 )	;
+	assign multi_cycle_op = ( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 ) | execu_control_word_i.exe_mem_op_en;
+	
+	assign event_flag = ( shift_latch == 2'b10 ) | 	( lsu_latch == 2'b10 );
+	assign event_over = ( shift_latch == 2'b11 ) | ( lsu_latch == 2'b11 );
 	
 	//in this way we avoid 1 clk delay for the trap_taken to reset
 	assign execu_trap_taken_int[1] = execu_trap_detected_i[1] | (trap_latch[1] & ~execu_new_instr_i) ; 
@@ -331,7 +339,7 @@ module ristretto_exe_cu #(
 			mc_write_latch <= 1'b0;
 			trap_latch <= 2'b00;
 			
-			new_instr_latch <= '0;
+			event_new_instr_ff <= '0;
 		end
 		else begin //If an exception occurs, no sequential unit will be enabled
 			// Shift Unit Event Handler
@@ -355,9 +363,6 @@ module ristretto_exe_cu #(
 			else if( (trap_latch[0]) & execu_new_instr_i & ~multi_cycle_op ) begin //SC instructions
 				trap_latch[0] <= 1'b0;			
 			end 
-			/*else if( (trap_latch[0]) & (execu_new_instr_i & ~new_instr_latch) & multi_cycle_op ) begin //MC instructions
-				trap_latch[0] <= 1'b0;			
-			end */
 			
 			// Write signal Event Handler : An exception will abort any Multicycle/singlecycle operation
 			if( multi_cycle_op ) begin 
@@ -367,8 +372,11 @@ module ristretto_exe_cu #(
 			
 			//New Instruction Event Handler 
 			 
-			if( execu_new_instr_i & ~new_instr_latch ) begin new_instr_latch <= 1'b1; end
-			else if( new_instr_latch /*& ~execu_exe_stage_busy_int*/ ) begin new_instr_latch <= 1'b0; end
+			if( ~event_new_instr_ff & execu_new_instr_i & multi_cycle_op ) begin event_new_instr_ff <= 1'b1; end
+			else if( event_new_instr_ff & event_over ) begin event_new_instr_ff <= 1'b0; end
+			 
+			/*if( execu_new_instr_i & ~new_instr_latch ) begin new_instr_latch <= 1'b1; end
+			else if( new_instr_latch ) begin new_instr_latch <= 1'b0; end*/
 		end
 	end
 	
@@ -376,11 +384,15 @@ module ristretto_exe_cu #(
 	
 
 	//Alu and BJU are totally combinatorial at the moment
-	assign execu_exe_stage_busy_int	= 
+	/*assign execu_exe_stage_busy_int	= 
 		( ~execu_trap_taken_int[1] ) & (								//Exception Condition 3
 		(~(execu_shu_mode_int == SHIFT_NONE | execu_shu_size_i <= 2'b01 | shift_latch == 2'b11 )) | 	//Shift unit condition
 		(~(execu_control_word_i.exe_mem_op_en == 1'b0 | lsu_latch == 2'b11))				//LSU unit condition;
-		);					
+		);	*/		
+	assign execu_exe_stage_busy_int	= 
+		( ~execu_trap_taken_int[1] ) & (								//Exception Condition 3
+			event_busy_int
+		);				
 
 	assign execu_alu_op_o = execu_alu_op_int;
 	assign execu_bju_op_o = execu_bju_op_int;

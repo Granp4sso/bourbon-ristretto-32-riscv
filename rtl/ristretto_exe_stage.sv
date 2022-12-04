@@ -408,7 +408,7 @@ module ristretto_exe_stage #(
 		.csr_tim_int_pend_i(tcu_tim_int_pend_int),			
 		.csr_ext_int_pend_i(tcu_ext_int_pend_int),
 		.csr_trap_state_i(tcu_trap_state_int),								//MIE,MPIE,MPP
-		.tcu_csr_we_i(tcu_csr_we_int & exe_new_instr_i ),						//Only 1 TCU write x instr
+		.tcu_csr_we_i( tcu_csr_we_int & exe_new_instr_i ),						//Only 1 TCU write x instr
 		.csr_mepc_o(csr_mepc_int),
 		/* Trap Signals */
 		.csr_priv_lvl_i(priv_lvl_int),		//Fixed Machine Level 
