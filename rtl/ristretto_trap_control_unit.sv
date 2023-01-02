@@ -2,7 +2,7 @@
 `include "pkg/ristretto_trap_pkg.sv"
 
 /*
-	Trap Control Unit v0.3 15/10/2022
+	Trap Control Unit v0.4 02/01/2023
 
 	******|| INSTANTIABLES 	||******
 
@@ -44,18 +44,14 @@
 		This process identifies wether a trap occurs or not. interrupts depends on the interrupt signal and the pending signal coming from the
 		CSRs. In the end, for each trap cause and values are assigned. trap_detected[1] is for Exceptions, trap_detected[0] is for Interrupts.
 		
-	-trap_state_handling :
-		If a trap has been detected, we must change the CSRs. If we are handling an MRET we must restore the state pre-trap. Otherwise we must
-		consider that interrupts might occur during a Jump (JALs, branchea) or an MRET returning phase. If that's the case, we must act accordingly.
+	-trap_mepc_and_address_handling :
+		If a trap has been detected, we must provide both the mepc and the next address.
+		The external exe_stage comprises an mepc further selection protocol that I might include into the tcu in the future.
 		
 	******|| NOTES		||******
 	
 	Thre TCU is designed to catch all interrupts and exceptions coming from the datapath. It must output the interrupt signal to the execution control unit.
 	NMI still not handled. Exception has higher priority than interrupts.
-	
-	At the moment, the trap handling must be performed in two clock cycles. This means we cannot achieve back to back interrupts without using the tcu as a multi cycle
-	component. However such a choice would require a further integration with the mc protocol in the execu unit, costing more resources and latency. 
-	Therefore, for each couple of consecutive interrupts, a main program instruction will be performed. (At least this would avoid DoS from peripherals lol)
 	
 	Many CSR control signals are unused here like machine_endianess,mcause,modify_privilege,mtval,user_endianess
 */
@@ -122,7 +118,11 @@ module ristretto_trap_control_unit import ristretto_csr_pkg::*;import ristretto_
 	logic			tcu_csr_we_int;
 	logic			tcu_halt_int = 1'b0;
 
-	assign tcu_next_pc_int = tcu_next_pc_i;// + 'h4;
+
+	//MIE becomes 0, mpie becomes the previous MIE, and MPP becomes the priv level (U or M)
+	assign tcu_trap_state_int = ( ~tcu_env_exception_i[1] ) ? {1'b0,tcu_csr_control_i.mie,priv_lvl_i} : {tcu_csr_control_i.mpie,1'b1,1'b1};	
+	assign tcu_csr_we_int = ( tcu_trap_detected_int != TCU_NOTRAP );
+	assign tcu_next_pc_int = tcu_next_pc_i;
 	
 	always_comb begin: trap_detector	//Get the Trap, the Cause and the Val
 	
@@ -167,54 +167,19 @@ module ristretto_trap_control_unit import ristretto_csr_pkg::*;import ristretto_
 		end
 	end
 	
-	/*always_comb begin: trap_state_handling_comb 
+	
+	always_ff @(posedge clk_i) begin : trap_mepc_and_address_handling
 	
 		if( tcu_trap_detected_int != TCU_NOTRAP ) begin
-			tcu_csr_we_int = 1'b1;
-		end else begin
-			tcu_csr_we_int = 1'b0;
-		end
-	end*/
-	
-	
-	always_ff @(posedge clk_i) begin : trap_state_handling_seq
-	
-		if( tcu_trap_detected_int != TCU_NOTRAP ) begin
-		
-			tcu_csr_we_int <= 1'b1;//( tcu_csr_we_int ) ? 1'b0 : 1'b1;
 			
-			if( ~tcu_env_exception_i[1] ) begin 	//In case of no Return
-			
-				//If we are handling an interrupt during the MRET penality, use the old mepc instead of the next address (bcs it would refer to the first instruction following the mret)
-				if( tcu_instr_penality_i[1] ) begin
-					tcu_mepc_int <= ( tcu_trap_detected_int[0] ) ? tcu_csr_control_i.mepc : tcu_next_pc_int;
-				end 
-				else if( tcu_instr_penality_i[0] ) begin	//Handling the ctrl Penality
-					if( tcu_fault_instr_i != 32'h00000013 & tcu_trap_detected_int[0] ) tcu_mepc_int <= tcu_next_pc_int;
-					else tcu_mepc_int <= tcu_next_pc_int;
-				end
-				else begin tcu_mepc_int <= tcu_next_pc_int; end	//No penality during the trap
-				
+			if( ~tcu_env_exception_i[1] ) begin 	//Interrupt case
+				tcu_mepc_int <= ( |tcu_instr_penality_i ) ? tcu_mepc_int : tcu_next_pc_int;
 				tcu_trap_address_int <= ( tcu_csr_control_i.mtvec[0] ) ? {tcu_csr_control_i.mtvec[31:2],2'b00} + {25'h000000,tcu_mcause_int,2'b00} : {tcu_csr_control_i.mtvec[31:2],2'b00} ;
-
-				tcu_trap_state_int <= {1'b0,tcu_csr_control_i.mie,priv_lvl_i};	//MIE becomes 0, mpie becomes the previous MIE, and MPP becomes the priv level (U or M)
-			
 			end
-			else begin				 //In case of MRET
-			
-				tcu_mepc_int <= tcu_csr_control_i.mepc +'h4;
+			else begin				 //Exception case ( MRET included )
+				tcu_mepc_int <= tcu_mepc_int;
 				tcu_trap_address_int <= '0 ;
-			
-				tcu_trap_state_int <= {tcu_csr_control_i.mpie,1'b1,1'b1};	//MIE becomes 0, mpie becomes the previous MIE, and MPP becomes the priv level (U or M)
-				//priv_lvl becomes tcu_csr_control_i.mpp
 			end
-		
-		end
-		else begin
-			tcu_csr_we_int <= 1'b0;
-			/*tcu_mepc_int = tcu_next_pc_i;
-			tcu_trap_address_int = '0 ;
-			tcu_trap_state_int = {tcu_csr_control_i.mie,tcu_csr_control_i.mpie,tcu_csr_control_i.mpp};*/
 		end
 	
 	end

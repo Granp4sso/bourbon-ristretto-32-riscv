@@ -62,7 +62,7 @@ module ristretto_fetch_unit import ristretto_if_stage_pkg::*; #(
 	output logic				if_fu_new_instr_o,
 	output logic				if_fu_stage_busy_o,
 	output logic[1:0]			if_fu_penality_o,	
-	//output logic[imem_fsm_bsize-1:0]	if_fu_state_o,
+	output logic[imem_fsm_bsize-1:0]	if_fu_state_o,
 	
 	input logic				if_fu_trap_hazard_flag_i,
 	input logic				if_fu_ctrl_hazard_flag_i
@@ -121,7 +121,7 @@ module ristretto_fetch_unit import ristretto_if_stage_pkg::*; #(
 	assign if_fu_instr_req_o = instr_req_int;
 	assign if_fu_stage_busy_o = if_stage_busy_int;
 	assign if_fu_new_instr_o = new_instr_int;
-	//assign if_fu_state_o = imem_state_int;
+	assign if_fu_state_o = imem_state_int;
 
 endmodule;
 

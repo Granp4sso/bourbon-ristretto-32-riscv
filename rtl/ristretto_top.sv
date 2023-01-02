@@ -140,21 +140,6 @@ module ristretto_top #(
 	logic[4:0] pcu_exe_rd_int = exe_rd_addr_int;
 	logic[4:0] dec_shadow_op_b_int;
 	
-	/*
-		FOR FUTURE DEVELOPMENTS: atm multicycle is computed in the exe_cu as well. Instead, compute it only in the dec stage and append it to the control world.
-	*/
-	
-	/*logic pcu_dec_shift_cond_int = dec_control_word_int.exe_shu_shift_en != SHIFT_NONE;
-	logic pcu_dec_shift_size_int = dec_shadow_op_b_int >= 5'h02;
-	logic pcu_dec_mem_cond_int = dec_control_word_int.exe_mem_op_en;
-	logic pcu_dec_multi_cycle_int = (pcu_dec_shift_cond_int & pcu_dec_shift_size_int) | pcu_dec_mem_cond_int; 
-	
-	logic pcu_exe_shift_cond_int = pip1_control_word_int.exe_shu_shift_en != SHIFT_NONE;
-	logic pcu_exe_shift_size_int = pip1_operand_b_int[4:0] >= 5'h02;
-	logic pcu_exe_mem_cond_int = pip1_control_word_int.exe_mem_op_en;
-	logic pcu_exe_multi_cycle_int = (pcu_exe_shift_cond_int & pcu_exe_shift_size_int) | pcu_exe_mem_cond_int; 
-	*/
-	
 	logic data_hazard_flag_int;
 	logic[1:0] data_hazard_src_int;
 	
@@ -171,11 +156,9 @@ module ristretto_top #(
 
 	//Instantiating Instruction Fetch Stage
 
-	assign pc_en_int = /*reg_wr_en_int |*/ fetch_en_int;	//The pc is written once everyody ended their task
+	assign pc_en_int = fetch_en_int;	
 	
 	logic [AddrWidth-1:0] current_pc_int;
-
-
 	logic if_ctrl_hazard_int = (pcu_ctrl_hazard_flag_int[0]) ? (pcu_ctrl_hazard_flag_int[1] | (~pcu_ctrl_hazard_flag_int[1] & exe_branch_taken_int)) : 1'b0;
 	
 	ristretto_if_stage #(

@@ -1,7 +1,7 @@
 `include "pkg/ristretto_if_stage_pkg.sv"
 
 /*
-	Prefetch Buffer v0.1 01/11/2022
+	Prefetch Buffer v0.4 02/01/2023
 
 	******|| INSTANTIABLES 	||******
 						- CodeType,	Mandatory,	Supported
@@ -10,18 +10,43 @@
 	******|| PARAMETERS 	||******
 
 	-DataWidth :		Width of data lines (32 bits or 64 bits)
+	-AddrWidth : 		Width of address bus (32 bits or 64 bits)
+	-BufferSize :		Prefetch Buffer entries number ( power of two required )
 	
 	******|| INTERFACES 	||******
 
 	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
+	if_pb_fetch_en_i :		The core is requesting the fetch of a new instruction
+	if_pb_instr_o :			Prefetch buffer provided instruction. It can be a passedthrough instruction from the FU or a stored instruction in the pb queue
+	if_pb_instr_tag_o :		High if the instruction is fetched from the buffer, 0 if it is provided by the FU
+	if_pb_new_instr_o :		New instruction signal attached with the new instruction		
+	if_pb_trap_hazard_flag_i :	An exception/interrupt Occurred. Flush the buffer.
+	if_pb_ctrl_hazard_flag_i :	A Jump Occurred. Flush the buffer.
+	if_pb_current_pc_o :		Produce the current PC address.
+	if_pb_active_o :		The prefetch buffer is storing/providing new instructions
+	if_pb_current_pc_i :		Receive the program counter from the outside
+	if_pb_fu_new_instr_i :		New instruction signal from the FU
+	if_pb_instr_i :			Instruction produced by the FU
+	if_pb_fu_busy_i :		Read the FU state
+	if_pb_fu_fetch_o :		Require a new instruction to the FU
 
 	******|| REMARKABLE 	||******
 
+	passthrough :
+		The prefetch buffer must require a new instruction from the FU unless it is full. The passthrough logic establishes if an instruction, its new instruction signal and
+		the instruction address has to be taken from the FU directly or from the PB buffer ( or if it is a NOP penality ).
 
+	pb_protocol :
+		The pb protocol is a sequential machine handling meant to handle the queue structure for read and write.
+		It also handles the flush of the buffer whenever a control hazard is detected.
+	
 	******|| NOTES		||******
 
-
-
+		The prefetch buffer is actually quite simple, it is just a queue. It allows the core to mask the instruction memory delay and achieve a 1 cycle execution for each stage.
+		Of course it will be quite useful for memory intensive workloads and less for compute intensive ones ( unless imem can respond faster than execution stage can provide data,
+		and that might be the case for some multi-cycle instructions such as divisions ).
+		There are some signals used to handle "limit situations" such as the last instruction released when a buffer becomes empty or the instruction received
+		upon a flush ( which must not be stored ).
 */
 
 module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
@@ -40,9 +65,7 @@ module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
 	
 	output logic[DataWidth-1:0]	if_pb_instr_o,
 	output logic			if_pb_instr_tag_o,
-	output logic			if_pb_new_instr_o,
-	output logic			if_pb_busy_o,
-	output logic[1:0]		if_pb_penality_o,		
+	output logic			if_pb_new_instr_o,		
 	
 	input logic			if_pb_trap_hazard_flag_i,
 	input logic			if_pb_ctrl_hazard_flag_i,
@@ -60,129 +83,108 @@ module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
 	
 );
 
-	logic [BufferSize-1:0][DataWidth-1:0] 	buffer_mem_int;
-	logic [$clog2(BufferSize)-1:0] 		buffer_head_int;
-	logic [$clog2(BufferSize)-1:0] 		buffer_tail_int;
-	logic [$clog2(BufferSize)-1:0] 		buffer_headinc_int;
-	logic [AddrWidth-1:0]			buffer_pc_int;
+	logic [BufferSize-1:0][DataWidth-1:0] 	pb_buffer_mem;
+	logic [$clog2(BufferSize)-1:0] 		pb_buffer_head_reg;
+	logic [$clog2(BufferSize)-1:0] 		pb_buffer_tail_reg;
+	logic [AddrWidth-1:0]			pb_buffer_pc_reg;
+	logic [DataWidth-1:0]			pb_buffer_instr_reg;
+	logic					pb_buffer_new_instr_ff;
+	logic					pb_buffer_empty_int;
+	logic					pb_buffer_full_int;
+	logic [BufferSize-1:0] 			pb_buffer_fillmask_reg;
 	
-	logic 				if_pb_busy_int;
-	logic[DataWidth-1:0]		buffer_instr_int;
-	logic[DataWidth-1:0]		instr_int;
-	logic				buffer_new_instr_int;
-	logic				new_instr_int;
-	logic				pb_fu_fetch_int;
-	logic				pb_race_cond_int;
+	logic					pb_fu_instr_pend_ff;
+	logic					pb_instr_tag_ff;
+	logic					pb_last_instr_flag_int;			//Last Instruction - New Instruction - Overlap
+	logic					pb_instr_after_flush_ff;		//Reject Instruction Adter Flush
 	
-	logic				buffer_empty_int;
-	logic				buffer_full_int;
-	
-	logic				pb_active_int;
-	
-	logic [AddrWidth-1:0]		current_pc_int;
-	
-	/* Test area */
-	
-	logic [BufferSize-1:0] 		test_buffer_fillmask_int;
-	logic				test_pb_fu_pendinginstr_int;
-	
-	logic				test_pb_instr_tag_int;
-	logic				test_pb_LINIO_int;			//Last Instruction - New Instruction - Overlap
-	logic				test_pb_RIAF_int;			//Reject Instruction Adter Flush
-	
+	logic [DataWidth-1:0]			pb_instr_int;
+	logic					pb_new_instr_int;
+	logic					pb_fu_fetch_int;
+	logic					pb_active_int;
+	logic [AddrWidth-1:0]			pb_current_pc_int;
+
 	// 0-latency passthrough
 	
-	assign buffer_empty_int = ~|test_buffer_fillmask_int;
-	assign buffer_full_int = &test_buffer_fillmask_int;
+	assign pb_buffer_empty_int = ~|pb_buffer_fillmask_reg;
+	assign pb_buffer_full_int = &pb_buffer_fillmask_reg;
 	
 	always_comb begin : passthrough
 	
-		test_pb_LINIO_int = buffer_new_instr_int & buffer_empty_int;
-		pb_fu_fetch_int = ( ~if_pb_fu_busy_i & ~buffer_full_int ) ? 1'b1 : 1'b0;
+		pb_last_instr_flag_int = pb_buffer_new_instr_ff & pb_buffer_empty_int;
+		pb_fu_fetch_int = ( ~if_pb_fu_busy_i & ~pb_buffer_full_int ) ? 1'b1 : 1'b0;
 		
 		if( pb_active_int & (if_pb_trap_hazard_flag_i | if_pb_ctrl_hazard_flag_i) ) begin
-			//Se il flag è alto contemporaneamente all'fu fetch, non cambiare niente (usare l'fu state forse sarebbe meglio)
-			//in caso contrario inietta una NOP nella pipe e il pc - 4.
-			instr_int = {{(DataWidth-8){1'b0}},8'h13}; 
-
+			pb_instr_int = {{(DataWidth-8){1'b0}},8'h13}; 
 		end
 		else begin
-			instr_int = ( buffer_empty_int & ~buffer_new_instr_int & if_pb_fetch_en_i ) ? if_pb_instr_i : buffer_instr_int ;	
+			pb_instr_int = ( pb_buffer_empty_int & ~pb_buffer_new_instr_ff & if_pb_fetch_en_i ) ? if_pb_instr_i : pb_buffer_instr_reg ;	
 		end
 		
-		current_pc_int = ( buffer_empty_int & ~buffer_new_instr_int & if_pb_fetch_en_i ) ? if_pb_current_pc_i : buffer_pc_int ;
-		new_instr_int = ( buffer_empty_int & ~buffer_new_instr_int & if_pb_fetch_en_i ) ? if_pb_fu_new_instr_i : buffer_new_instr_int ;
+		pb_current_pc_int = ( pb_buffer_empty_int & ~pb_buffer_new_instr_ff & if_pb_fetch_en_i ) ? if_pb_current_pc_i : pb_buffer_pc_reg ;
+		pb_new_instr_int = ( pb_buffer_empty_int & ~pb_buffer_new_instr_ff & if_pb_fetch_en_i ) ? if_pb_fu_new_instr_i : pb_buffer_new_instr_ff ;
 		
 	end
 	
-	always_ff@(posedge clk_i) begin: imem_protocol
+	always_ff@(posedge clk_i) begin: pb_protocol
 		if( rstn_i == 1'b0 ) begin
 		
-			buffer_mem_int <= '0;
-			buffer_head_int <= '0;
-			buffer_tail_int <= '0;
-			buffer_pc_int <= '0;
-			test_buffer_fillmask_int <= '0;
+			pb_buffer_mem <= '0;
+			pb_buffer_head_reg <= '0;
+			pb_buffer_tail_reg <= '0;
+			pb_buffer_pc_reg <= '0;
+			pb_buffer_fillmask_reg <= '0;
 			
-			buffer_instr_int <= '0;
-			buffer_new_instr_int <= '0;
-			
-			pb_race_cond_int <= '0;
+			pb_buffer_instr_reg <= '0;
+			pb_buffer_new_instr_ff <= '0;
 			
 			pb_active_int <= '0;
 			
-			test_pb_fu_pendinginstr_int <= '0;
-			test_pb_instr_tag_int <= '0;
-			test_pb_RIAF_int <= '0;
+			pb_fu_instr_pend_ff <= '0;
+			pb_instr_tag_ff <= '0;
+			pb_instr_after_flush_ff <= '0;
 				
 		end
-		else if( (if_pb_trap_hazard_flag_i | if_pb_ctrl_hazard_flag_i) & (~buffer_empty_int | test_pb_LINIO_int) ) begin	//Flush the buffer
-			/*buffer_mem_int <= '0;
-			buffer_head_int <= '0;
-			buffer_tail_int <= '0;*/
+		else if( (if_pb_trap_hazard_flag_i | if_pb_ctrl_hazard_flag_i) & (~pb_buffer_empty_int | pb_last_instr_flag_int) ) begin	//Flush the buffer
 			
-			buffer_head_int <= buffer_tail_int;
-			buffer_pc_int <= '0;
-			test_buffer_fillmask_int <= '0;
+			pb_buffer_head_reg <= pb_buffer_tail_reg;
+			pb_buffer_pc_reg <= '0;
+			pb_buffer_fillmask_reg <= '0;
 			
-			buffer_instr_int <= '0;
-			buffer_new_instr_int <= '0;
+			pb_buffer_instr_reg <= '0;
+			pb_buffer_new_instr_ff <= '0;
 			
-			pb_race_cond_int <= '0;
+			pb_fu_instr_pend_ff <= '0;
+			pb_instr_tag_ff <= '0;
 			
-			test_pb_fu_pendinginstr_int <= '0;
-			test_pb_instr_tag_int <= '0;
-			
-			test_pb_RIAF_int <= ( if_pb_fu_new_instr_i ) ? 1'b0 : 1'b1;
+			pb_instr_after_flush_ff <= ( if_pb_fu_new_instr_i ) ? 1'b0 : 1'b1;
 		end
 		else begin
 		
 			//Prefetch Buffer active
-			if( ~pb_active_int & ~buffer_empty_int ) pb_active_int <= 1'b1;
-			else if( pb_active_int & buffer_empty_int ) pb_active_int <= 1'b0;
+			if( ~pb_active_int & ~pb_buffer_empty_int ) pb_active_int <= 1'b1;
+			else if( pb_active_int & pb_buffer_empty_int ) pb_active_int <= 1'b0;
 			
 			//Store a pending valid instruction if the buffer is full
 			
-			if( buffer_full_int & if_pb_fu_new_instr_i ) test_pb_fu_pendinginstr_int <= 1'b1;
+			if( pb_buffer_full_int & if_pb_fu_new_instr_i ) pb_fu_instr_pend_ff <= 1'b1;
 		
 			//Writing into the buffer 
 			
-			if( ~buffer_full_int ) begin							//Buffer is not full
-				if( if_pb_fu_new_instr_i | test_pb_fu_pendinginstr_int) begin		//FU has a new instruction and no fetch from the core has been required yet
+			if( ~pb_buffer_full_int ) begin						//Buffer is not full
+				if( if_pb_fu_new_instr_i | pb_fu_instr_pend_ff ) begin		//FU has a new instruction and no fetch from the core has been required yet
 				
-					// first instruction condition, writing on a non empty buffer condition, writing a new instruction overlapping to the last instruction fetch
-					if( (~if_pb_fetch_en_i & buffer_empty_int ) | ~buffer_empty_int | test_pb_LINIO_int ) begin 
+					if( (~if_pb_fetch_en_i & pb_buffer_empty_int ) | ~pb_buffer_empty_int | pb_last_instr_flag_int ) begin 
 					
-						if( buffer_empty_int ) begin							//First write into the buffer
-							buffer_pc_int <= if_pb_current_pc_i - 4;
-							pb_race_cond_int <= 1'b1;
+						if( pb_buffer_empty_int ) begin							//First write into the buffer
+							pb_buffer_pc_reg <= if_pb_current_pc_i - 4;
 						end
 						
-						buffer_mem_int[buffer_head_int] <= if_pb_instr_i;
-						test_buffer_fillmask_int[buffer_head_int] <= 1'b1;
-						buffer_head_int <= buffer_head_int + 1;		
+						pb_buffer_mem[pb_buffer_head_reg] <= if_pb_instr_i;
+						pb_buffer_fillmask_reg[pb_buffer_head_reg] <= 1'b1;
+						pb_buffer_head_reg <= pb_buffer_head_reg + 1;		
 						
-						test_pb_fu_pendinginstr_int <= '0;	
+						pb_fu_instr_pend_ff <= '0;	
 					end
 
 				end			
@@ -192,38 +194,36 @@ module ristretto_prefetch_buffer import ristretto_if_stage_pkg::*; #(
 			
 			if( if_pb_fetch_en_i ) begin
 			
-				if( ~buffer_empty_int ) begin								//Buffer is not empty
-					buffer_instr_int <= buffer_mem_int[buffer_tail_int];
-					test_buffer_fillmask_int[buffer_tail_int] <= 1'b0;
-					buffer_pc_int <= buffer_pc_int + 4;
-					buffer_tail_int <= buffer_tail_int + 1;
-					buffer_new_instr_int <= 1'b1 ;
-					test_pb_instr_tag_int <= 1'b1;
+				if( ~pb_buffer_empty_int ) begin								//Buffer is not empty
+					pb_buffer_instr_reg <= pb_buffer_mem[pb_buffer_tail_reg];
+					pb_buffer_fillmask_reg[pb_buffer_tail_reg] <= 1'b0;
+					pb_buffer_pc_reg <= pb_buffer_pc_reg + 4;
+					pb_buffer_tail_reg <= pb_buffer_tail_reg + 1;
+					pb_buffer_new_instr_ff <= 1'b1 ;
+					pb_instr_tag_ff <= 1'b1;
 					
 				end
 				else begin 
-					buffer_new_instr_int <= 1'b0 ;
-					test_pb_instr_tag_int <= 1'b0;
+					pb_buffer_new_instr_ff <= 1'b0 ;
+					pb_instr_tag_ff <= 1'b0;
 				end
 			end
-			else  begin buffer_new_instr_int <= 1'b0 ; end
+			else  begin pb_buffer_new_instr_ff <= 1'b0 ; end
 			
 			//Reset Reject Instruction After Flush FF
 			
-			test_pb_RIAF_int <= 1'b0;
+			pb_instr_after_flush_ff <= 1'b0;
 			
 		
 		end
 	end
 	
-	assign if_pb_instr_o = instr_int;
-	assign if_pb_new_instr_o = new_instr_int & ~test_pb_RIAF_int;
-	assign if_pb_busy_o = 0;
-	assign if_pb_penality_o = '0;
+	assign if_pb_instr_o = pb_instr_int;
+	assign if_pb_new_instr_o = pb_new_instr_int & ~pb_instr_after_flush_ff;
 	assign if_pb_fu_fetch_o = pb_fu_fetch_int;
-	assign if_pb_current_pc_o = current_pc_int;
+	assign if_pb_current_pc_o = pb_current_pc_int;
 	assign if_pb_active_o = pb_active_int;
-	assign if_pb_instr_tag_o = test_pb_instr_tag_int;
+	assign if_pb_instr_tag_o = pb_instr_tag_ff;
 
 endmodule;
 

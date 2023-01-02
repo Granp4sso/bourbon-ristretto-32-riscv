@@ -1,7 +1,7 @@
 `include "pkg/ristretto_if_stage_pkg.sv"
 
 /*
-	Instruction Fetch Stage v0.5 26/08/2022
+	Instruction Fetch Stage v0.6 02/01/2023
 
 	******|| INSTANTIABLES 	||******
 
@@ -47,7 +47,7 @@
 
 	******|| NOTES		||******
 
-	Future updates will support a prefetch buffer for performance. TCMs and Caches as well.
+	Future updates will support TCMs and Caches as well.
 	Other stages supports also a control unit. At the moment the if is not required to do so, but we will see in the future.
 	
 */
@@ -89,96 +89,129 @@ module ristretto_if_stage import ristretto_if_stage_pkg::*; #(
 
 );
 
-	logic[AddrWidth-1:0]	curr_pc_int;
-	logic[AddrWidth-1:0]	fast_pc_int;
-	logic[AddrWidth-1:0]	pb_curr_pc_int;
-	logic[DataWidth-1:0] 	fu_instr_int;
-	logic[DataWidth-1:0] 	pb_instr_int;
+	// Instruction Fetch Stage signals
 	
-	logic			fu_busy_int;
+	logic[AddrWidth-1:0]	if_curr_pc_reg;
+	logic[AddrWidth-1:0]	if_fast_pc_int;
 	logic			if_stage_busy_int;
-	logic			fu_new_instr_int;
-	logic			pb_new_instr_int;
-	logic			pb_active_int;
-	logic			fu_fetch_en_int;
-	logic 			instr_req_int;
+	logic 			if_instr_req_int;
 	
-	logic			pb_instr_tag_int;
+	// Fetch Unit Signals
+	
+	logic[DataWidth-1:0] 	if_fu_instr_int;
+	logic			if_fu_busy_int;
+	logic			if_fu_new_instr_int;
+	logic			if_fu_fetch_en_int;
+	
+	// [ Prefetch Buffer Signals ]
+	logic			if_pb_instr_tag_int = 1'b0;
+	logic			if_pb_active_int = 1'b0;
+	
+	// Final Output Signals
+	
+	logic[AddrWidth-1:0] 	if_fin_curr_pc_int;
+	logic[AddrWidth-1:0] 	if_fin_instr_int;
+	logic			if_fin_new_instr_int;
+	
+	/* Prefetch Buffer Optional instantiation */
+	
+	if( PrefetchBuffer ) begin
+	
+		logic [DataWidth-1:0]	if_pb_curr_pc_int;
+		logic [DataWidth-1:0] 	if_pb_instr_int;
+		logic			if_pb_new_instr_int;			
+		logic			if_pb_fu_fetch_en_int;		
+		
+		assign if_fin_curr_pc_int = 	if_pb_curr_pc_int;
+		assign if_fin_instr_int = 	if_pb_instr_int;
+		assign if_fin_new_instr_int = 	if_pb_new_instr_int;
+		assign if_fu_fetch_en_int = 	if_pb_fu_fetch_en_int;	
+		assign if_stage_busy_int = 	1'b0;
+		
+		ristretto_prefetch_buffer #(
+			.DataWidth			(DataWidth),
+			.AddrWidth			(AddrWidth),
+			.BufferSize			(8)
+		) pb (
+			.clk_i				(clk_i),
+			.rstn_i				(rstn_i),
+			.if_pb_fetch_en_i		(if_fetch_en_i),
+			.if_pb_instr_o			(if_pb_instr_int),
+			.if_pb_instr_tag_o		(if_pb_instr_tag_int),
+			.if_pb_new_instr_o		(if_pb_new_instr_int),		
+			.if_pb_trap_hazard_flag_i	(if_trap_hazard_flag_i),	
+			.if_pb_ctrl_hazard_flag_i	(if_ctrl_hazard_flag_i),
+			.if_pb_current_pc_o		(if_pb_curr_pc_int),
+			.if_pb_active_o			(if_pb_active_int),
+			
+			.if_pb_current_pc_i		(if_fast_pc_int),
+			.if_pb_fu_new_instr_i		(if_fu_new_instr_int),
+			.if_pb_instr_i			(if_fu_instr_int),
+			.if_pb_fu_busy_i		(if_fu_busy_int),
+			.if_pb_fu_fetch_o		(if_pb_fu_fetch_en_int)
+		);
+		
+	end
+	else begin
+	
+		assign if_fin_curr_pc_int = 	if_curr_pc_reg;
+		assign if_fin_instr_int = 	if_fu_instr_int;
+		assign if_fin_new_instr_int = 	if_fu_new_instr_int;
+		assign if_fu_fetch_en_int = 	if_fetch_en_i;
+		assign if_stage_busy_int = 	if_fu_busy_int;
+		
+		assign if_pb_instr_tag_int = 	1'b0;
+		assign if_pb_active_int = 	1'b0;
+	
+	end
 
 	/*Program Counter Process */
 	
-	assign fast_pc_int = ( if_fetch_en_i & ( if_ctrl_hazard_flag_i | if_trap_hazard_flag_i ) ) ? if_next_pc_i : curr_pc_int;
+	assign if_fast_pc_int = ( if_fetch_en_i & ( if_ctrl_hazard_flag_i | if_trap_hazard_flag_i ) ) ? if_next_pc_i : if_curr_pc_reg;
 
 	always_ff@(posedge clk_i) begin: PC_proc
 		if(rstn_i == 1'b0) begin
-			curr_pc_int <= '0;
+			if_curr_pc_reg <= '0;
 		end
 		else begin
-			if(/*if_pc_en_i &*/ fu_fetch_en_int ) begin
-				curr_pc_int <= ( if_ctrl_hazard_flag_i | if_trap_hazard_flag_i ) ? if_next_pc_i : curr_pc_int + 4; //if_next_pc_i ;
+			if( if_fu_fetch_en_int ) begin
+				if_curr_pc_reg <= ( if_ctrl_hazard_flag_i | if_trap_hazard_flag_i ) ? if_next_pc_i : if_curr_pc_reg + 4;
 			end
-			else if( if_fetch_en_i & ( if_ctrl_hazard_flag_i | if_trap_hazard_flag_i ) ) curr_pc_int <= ( pb_active_int & ~instr_req_int ) ? if_next_pc_i - 4 : if_next_pc_i ;
+			else if( if_fetch_en_i & if_trap_hazard_flag_i ) if_curr_pc_reg <= if_next_pc_i ;
+			else if( if_fetch_en_i & if_ctrl_hazard_flag_i ) if_curr_pc_reg <= ( if_pb_active_int & ~if_instr_req_int ) ? if_next_pc_i - 4 : if_next_pc_i ;
 		end
 	end
 
 	/*Fetch Unit instantiation*/
-	
-	assign if_stage_busy_int = 1'b0;
 
 	ristretto_fetch_unit #(
 		.DataWidth			(DataWidth)
 	) fu (
 		.clk_i				(clk_i),
 		.rstn_i				(rstn_i),
-		.if_fu_fetch_en_i		(fu_fetch_en_int),
+		.if_fu_fetch_en_i		(if_fu_fetch_en_int),
 		.if_fu_instr_ready_i		(if_instr_ready_i),
 		.if_fu_instr_valid_i		(if_instr_valid_i),
 		.if_fu_instr_rdata_i		(if_instr_rdata_i),
-		.if_fu_instr_req_o		(instr_req_int),
+		.if_fu_instr_req_o		(if_instr_req_int),
 
-		.if_fu_instr_o			(fu_instr_int),
-		.if_fu_new_instr_o		(fu_new_instr_int),
-		.if_fu_stage_busy_o		(fu_busy_int),
+		.if_fu_instr_o			(if_fu_instr_int),
+		.if_fu_new_instr_o		(if_fu_new_instr_int),
+		.if_fu_stage_busy_o		(if_fu_busy_int),
 		.if_fu_penality_o		(if_penality_o),
+		.if_fu_state_o			(),
 		
 		.if_fu_trap_hazard_flag_i	(if_trap_hazard_flag_i),
 		.if_fu_ctrl_hazard_flag_i	(if_ctrl_hazard_flag_i)
 
 	);
-
-	/*Prefetch buffer instantiation*/
 	
-	ristretto_prefetch_buffer #(
-		.DataWidth			(DataWidth),
-		.AddrWidth			(AddrWidth),
-		.BufferSize			(8)
-	) pb (
-		.clk_i				(clk_i),
-		.rstn_i				(rstn_i),
-		.if_pb_fetch_en_i		(if_fetch_en_i),
-		.if_pb_instr_o			(pb_instr_int),
-		.if_pb_instr_tag_o		(pb_instr_tag_int),
-		.if_pb_new_instr_o		(pb_new_instr_int),
-		.if_pb_busy_o			(),
-		.if_pb_penality_o		(),		
-		.if_pb_trap_hazard_flag_i	(if_trap_hazard_flag_i),	
-		.if_pb_ctrl_hazard_flag_i	(if_ctrl_hazard_flag_i),
-		.if_pb_current_pc_o		(pb_curr_pc_int),
-		.if_pb_active_o			(pb_active_int),
-		
-		.if_pb_current_pc_i		(fast_pc_int),
-		.if_pb_fu_new_instr_i		(fu_new_instr_int),
-		.if_pb_instr_i			(fu_instr_int),
-		.if_pb_fu_busy_i		(fu_busy_int),
-		.if_pb_fu_fetch_o		(fu_fetch_en_int)
-	);
-	
-	assign if_curr_pc_o = pb_curr_pc_int;
-	assign if_instr_addr_o = fast_pc_int;
-	assign if_instr_o = pb_instr_int;
-	assign if_instr_req_o = instr_req_int;
-	assign if_stage_busy_o = if_stage_busy_int;
-	assign if_new_instr_o = pb_new_instr_int;
-	assign if_pb_instr_tag_o = pb_instr_tag_int;
+	assign if_curr_pc_o = 		if_fin_curr_pc_int;
+	assign if_instr_addr_o = 	if_fast_pc_int;
+	assign if_instr_o = 		if_fin_instr_int;
+	assign if_instr_req_o = 	if_instr_req_int;
+	assign if_stage_busy_o = 	if_stage_busy_int;
+	assign if_new_instr_o = 	if_fin_new_instr_int;
+	assign if_pb_instr_tag_o = 	if_pb_instr_tag_int;
 
 endmodule

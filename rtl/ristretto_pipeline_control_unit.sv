@@ -132,55 +132,11 @@ module ristretto_pipeline_control_unit #(
 	
 	assign pcu_pip0_flush_int = |pcu_exe_trap_flag_i | (pcu_ctrl_hazard_flag_o == 2'b11) | (pcu_ctrl_hazard_flag_o == 2'b01 & pcu_exe_branch_taken_i);
 	assign pcu_pip1_flush_int = |pcu_exe_trap_flag_i | (pcu_ctrl_hazard_flag_o == 2'b11) | (pcu_ctrl_hazard_flag_o == 2'b01 & pcu_exe_branch_taken_i);
-	assign pcu_ifs_fetch_en_int = ~pcu_ifs_busy_i & ~pcu_pip0_stall_int;
+	assign pcu_ifs_fetch_en_int = ~pcu_ifs_busy_i & ~pcu_pip0_stall_int;// if prefetch buffer is not supported -> ~pcu_ifs_busy_i & ~pcu_pip0_stall_int; else ~pcu_exe_multi_cycle_i
 
 	assign pcu_pip0_stall_int = ( ~pcu_decs_pb_instr_tag_i & pip0_stall_ff ) | ( pcu_decs_pb_instr_tag_i & pcu_exes_busy_i ) | pcu_decs_busy_i ;
-	//assign pcu_pip0_stall_int = pip0_stall_ff | ( pcu_decs_pb_instr_tag_i & pcu_exes_busy_i ) | pcu_decs_busy_i ;
 	assign pcu_pip1_stall_int = pcu_exes_busy_i ;
 	
-
-	/*
-		the trigger notices us when the if stage succesfully fetched a new instruction 
-		Because the dec stage only takes 1 clk cycles, the trigger will become high exactly when the dec_busy will fall down. So, we will stall the pipe only if a new instruction
-		has been charged into the ifs stage, but the decode stage has not passed its decoded instruction yet to the execution stage.
-		When the decode stage will take more than 1 clk cycles, things will get more complicated: i.e. the pipe will have some "shadow-stalls" which won't affect the 
-		correct behaviour, but will periodically and uselessly commutate-> consume power
-	*/
-	
-	/*
-		DATA HAZARD:
-		for the moment, we have combinatorial instructions which requires 4 IF cycles, 1 DEC cycles and 3 EXE cycles. After 8 clock cycles, the data will be written.
-		Two Comb.Instructions will overlap in a way that when the second instruction enters the DEC stages, it will already dispose the data written by the previous instruction.
-		
-		1 : F F F F D E E E 
-		2 : - - - - F F F F D E E E
-		
-		Further optimizations meant to balance the pipe and maximize the throughput will make data hazards occur even in this case.
-		(e.g. reducing F thanks to buffers, caches etc.. or increasing the number of D cycles)
-		So Data hazards are avoided as long as D(i) is reached after the end of E(i-1).
-		
-		If we take a Shift instead, it will require 5 cs (which I hope to reduce, because they are) + N (shift required) as long as N > 2 (otherwise the shift is a comb.op).
-		
-		1 : F F F F D E E E E E E E E E
-		2 : - - - - F F F F D - - - - - E E E 
-		
-		In this case what happens is that D_start(i) < E_end(i-1). However the the pip1 doesn't stall when comb.op are executed, hence 2 will be capable of passing the new data during the 
-		second clock cycle of E and instantaneously complete the computation.
-		The expense in terms of cs in exe stage is given by Sync signals, so data hazards won't happen for the combo:
-			1 - comb -> comb	because  D_start(i) = E_end(i-1)
-			2 - comb -> seq		because  D_start(i) = E_end(i-1)
-			3 - seq -> comb		because despite D_start(i) < E_end(i-1), comb.op will receive new data every E cycles cause pip1 won't stall
-		It will happen for the combo
-			3 - seq -> seq		because despite D_start(i) < E_end(i-1), and a seq.op will stall the pip1.
-			
-		So at the moment, the following conditions verifies a Data hazard:
-		
-		DataHazard = ( Register_dest(i-1) == Register_source(i) ) & Write_en(i-1) & multi_cycle(i-1) & multi_cycle(i)  
-	*/
-	
-	/* DATA HAZARD FLAG */
-	
-	/* The hazard signal is not working. Actyuually every flag is active, but the signal is still 0. It looks like the SystemVerilog AND operator is broken. WTF?!? */
 	
 	logic 		data_hazard_flag_int;
 	logic[1:0] 	data_hazard_src_int;

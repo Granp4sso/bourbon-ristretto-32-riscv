@@ -1,7 +1,7 @@
 `include "pkg/ristretto_exe_stage_pkg.sv"
 
 /*
-	Trap Control Unit v0.8 30/09/2022
+	Execution Stage v0.9 02/01/2023
 
 	******|| INSTANTIABLES 	||******
 						- CodeType,	Mandatory,	Supported
@@ -63,16 +63,19 @@
 
 	******|| REMARKABLE 	||******
 	
-
+	MEPC Value Selection Protocol Section :
+		The protocol is meant to correctly handle the mepc during a trap (exception and interrupt). Every time a jump is taken, the address is stored into
+		an internal register. Once a trap occurs, the process here latch the moment of trap occurrence ( Normal, During a Jump, During a Penality ).
+		According to that, the correct MEPC will be selected ( tcu produced mepc, bju produced address, last jump latched address ).
+		This protocol might be included into the tcu in the future.
 	
-		
+	Multiplexers :
+		Two multiplexers are controlled by the exe_cu in order to drive the result for the writeback and the next pc address.
+		Each unit is designed to provide one of those and the exe cu is responsible for the enforcement of the correct behaviour.
+
 	******|| NOTES		||******
 	
-	Strange thing are right here. First of all the PC increment system is not elegant at all. There are address sums here and there that I must fix. It works, but it's meh.
-	we have the bju_active signals that I don't recall if it is usefull or not. 
-	Moreover I should check this tcu_csr_postcontrol_int. I think using the tcu_csr_precontrol_init would be fine as well, but I have to check
-	Results MUX is quite a mess to read, but I'm satisfied enough by it. We have a bit for each possible selection path. However there still is that hideous sum, which will result
-	in another adder.
+	
 */
 
 import ristretto_exe_stage_pkg::*;
@@ -186,8 +189,7 @@ module ristretto_exe_stage #(
 	// CSR Regfile Signals
 	
 	logic [DataWidth-1:0] 	csr_rdata_int;
-	csr_ctrl_t		tcu_csr_precontrol_int;
-	csr_ctrl_t		tcu_csr_postcontrol_int;
+	csr_ctrl_t		tcu_csr_control_int;
 	logic [DataWidth-1:0] 	tcu_mtval_int;
 	logic [4:0] 		tcu_mcause_int;
 	logic [AddrWidth-1:0] 	tcu_mepc_int;
@@ -352,45 +354,59 @@ module ristretto_exe_stage #(
 		.lsu_result_o(lsu_result_int)	//The result shall be driven into an internal signal and then in the result MUX
 	);
 
-	//MEPC address handling for interrupts
+	/* #### MEPC Value Selection Protocol Section #### */
 
-	logic [AddrWidth-1:0] final_mepc_int;
-	logic [2:0] mret_ff;
+	logic [AddrWidth-1:0] 	mepcv_mepc_int;
+	logic [AddrWidth-1:0] 	mepcv_jump_address_reg;
+	logic [1:0]		mepcv_ontrap_type;
+	logic 			mepcv_csr_we;
 	
-	always_ff @(posedge clk_i) begin
+	always_ff @(posedge clk_i) begin : mepc_sequential_machine
 	
 		if( rstn_i == 1'b0 ) begin
-			mret_ff <= '0;
+
+			mepcv_jump_address_reg <= '0;
+			mepcv_ontrap_type <= '0;
 		end
 		else begin
-			case(mret_ff)
-				3'b000: begin if( exe_control_word_i[24:23] == ENC_MRET ) 	mret_ff <= 3'b001; end		//Start the counter for an interrupt to occurr after the mret
-				3'b001: begin if( exe_new_instr_i == 1'b0 ) 			mret_ff <= 3'b010; end
-				3'b010: begin if( exe_new_instr_i == 1'b1 )		 	mret_ff <= 3'b011; end
-				3'b011: begin if( exe_new_instr_i == 1'b0 )		 	mret_ff <= 3'b100; end
-				3'b100: begin if( exe_new_instr_i == 1'b1 )		 	mret_ff <= 3'b101; end
-				3'b101: begin if( exe_new_instr_i == 1'b0 )		 	mret_ff <= 3'b000; end
-				default: begin mret_ff <= 3'b000; end
-			endcase
+		
+			//Record the Jump Address whenever a jump/branch is performed
+			if( |bju_op_int[1:0] ) begin
+				mepcv_jump_address_reg <= pretrap_next_pc_int;
+			end
+			
+			//Record an interrupt happening during a Jump
+			if( exe_trap_taken_int != 2'b00 ) begin
+				if( |bju_op_int[1:0] ) 				mepcv_ontrap_type <= 2'b01;
+				else if( exe_instr_penality_i == 2'b10 ) 	mepcv_ontrap_type <= 2'b10;
+				else 						mepcv_ontrap_type <= 2'b00;
+				
+				if( exe_new_instr_i ) 	mepcv_csr_we <= 1'b1;
+				else 			mepcv_csr_we <= 1'b0;
+			end
+			else mepcv_csr_we <= 1'b0;
+
 		end
 	
 	end
 	
 	always_comb begin : mepc_selection_process
 	
-		if(|bju_op_int[1:0]) begin			//Drive MEPC interrupt during a jump
-			final_mepc_int = tcu_mepc_int;
+		if(mepcv_ontrap_type == 2'b00 | exe_control_word_i[24:23] == ENC_MRET) begin    //Drive MEPC interrupt during SC/MC classic instructions (considering after-MRET as well)
+			mepcv_mepc_int = tcu_mepc_int;
+		end	
+		else if(mepcv_ontrap_type == 2'b01 ) begin					//Drive MEPC interrupt during a jump
+			mepcv_mepc_int = pretrap_next_pc_int;
 		end
-		else if(exe_instr_penality_i == 2'b10) begin	//Drive MEPC interrupt during a jump penality
-			final_mepc_int = tcu_mepc_int;
-		end
-		else begin 					//Drive MEPC interrupt during SC/MC classic instructions (considering after-MRET as well)
-			final_mepc_int = ( mret_ff >= 3'b011 ) ? tcu_mepc_int : {tcu_mepc_int[31:2]+30'h1,tcu_mepc_int[1:0]} ;
+		else if(mepcv_ontrap_type == 2'b10 ) begin					//Drive MEPC interrupt during a jump penality
+			mepcv_mepc_int = mepcv_jump_address_reg;
 		end
 	
 	end
 	
 	//Instantiating CSR regfile
+	
+	logic [DataWidth-1:0]	csr_mcause_int = {tcu_mcause_int[4],27'h0000000,tcu_mcause_int[3:0]};
 	
 	ristretto_csr_regfile csr_reg (
 		.clk_i(clk_i),
@@ -400,26 +416,20 @@ module ristretto_exe_stage #(
 		.csr_op_i(csr_op_int),
 		.csr_en_i(csr_en_int), 
 		.csr_rdata_o(csr_rdata_int),
-		/* Trap Signals */
 		.csr_mtval_i(tcu_mtval_int),
-		.csr_mcause_i({tcu_mcause_int[4],27'h0000000,tcu_mcause_int[3:0]}),
-		.csr_mepc_i(final_mepc_int) ,//SC interrupted instructions require a +4
+		.csr_mcause_i(csr_mcause_int),
+		.csr_mepc_i(mepcv_mepc_int),
 		.csr_sw_int_pend_i(tcu_sw_int_pend_int),
 		.csr_tim_int_pend_i(tcu_tim_int_pend_int),			
 		.csr_ext_int_pend_i(tcu_ext_int_pend_int),
-		.csr_trap_state_i(tcu_trap_state_int),								//MIE,MPIE,MPP
-		.tcu_csr_we_i( tcu_csr_we_int & exe_new_instr_i ),						//Only 1 TCU write x instr
+		.csr_trap_state_i(tcu_trap_state_int),				//MIE,MPIE,MPP
+		.tcu_csr_we_i( mepcv_csr_we ),					//Only 1 TCU write x instr
 		.csr_mepc_o(csr_mepc_int),
-		/* Trap Signals */
-		.csr_priv_lvl_i(priv_lvl_int),		//Fixed Machine Level 
-		.csr_control_o(tcu_csr_precontrol_int)	
+		.csr_priv_lvl_i(priv_lvl_int),					//Fixed at Machine Level atm
+		.csr_control_o(tcu_csr_control_int)	
 	);
 	
 	//Instantiating Trap Control Unit
-
-	//Delete this two lines, they are pointless now
-	assign tcu_csr_postcontrol_int = tcu_csr_precontrol_int;
-	assign tcu_csr_postcontrol_int.mie = tcu_csr_precontrol_int.mie;
 
 	ristretto_trap_control_unit tcu (
 		.clk_i(clk_i),
@@ -428,7 +438,7 @@ module ristretto_exe_stage #(
 		.tcu_next_pc_i(pretrap_next_pc_int),
 		.tcu_fault_instr_i(exe_invalid_instrval_i),
 		.tcu_lsu_fault_addr_i(lsu_invalid_addr_int),
-		.tcu_csr_control_i(tcu_csr_postcontrol_int),
+		.tcu_csr_control_i(tcu_csr_control_int),
 		.tcu_mtval_o(tcu_mtval_int),
 		.tcu_mcause_o(tcu_mcause_int),
 		.tcu_mepc_o(tcu_mepc_int),
