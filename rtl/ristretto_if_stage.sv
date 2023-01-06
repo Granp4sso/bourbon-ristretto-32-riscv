@@ -57,7 +57,7 @@ module ristretto_if_stage import ristretto_if_stage_pkg::*; #(
 	parameter unsigned DataWidth = 32,
 	parameter unsigned AddrWidth = 32,
 
-	parameter unsigned PrefetchBuffer = 0,
+	parameter unsigned PrefetchBuffer = PrefetchBufferNone,
 	parameter unsigned iTCM = 0,
 	parameter unsigned iCache = 0
 
@@ -115,7 +115,7 @@ module ristretto_if_stage import ristretto_if_stage_pkg::*; #(
 	
 	/* Prefetch Buffer Optional instantiation */
 	
-	if( PrefetchBuffer ) begin
+	if( PrefetchBuffer != PrefetchBufferNone ) begin
 	
 		logic [DataWidth-1:0]	if_pb_curr_pc_int;
 		logic [DataWidth-1:0] 	if_pb_instr_int;
@@ -131,7 +131,7 @@ module ristretto_if_stage import ristretto_if_stage_pkg::*; #(
 		ristretto_prefetch_buffer #(
 			.DataWidth			(DataWidth),
 			.AddrWidth			(AddrWidth),
-			.BufferSize			(8)
+			.BufferSize			(PrefetchBuffer)
 		) pb (
 			.clk_i				(clk_i),
 			.rstn_i				(rstn_i),

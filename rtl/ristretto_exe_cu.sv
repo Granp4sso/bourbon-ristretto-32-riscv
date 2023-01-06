@@ -9,6 +9,7 @@
 
 	-DataWidth :		Width of data lines
 	-AddrWidth :		Width of addresses
+	-ShiftUnit : 		ShiftUnitSequential or ShiftUnitBarrel
 	
 	******|| INTERFACES 	||******
 
@@ -86,7 +87,8 @@ import ristretto_exe_stage_pkg::*;
 
 module ristretto_exe_cu #(
 	parameter unsigned DataWidth = 32,
-	parameter unsigned AddrWidth = 32
+	parameter unsigned AddrWidth = 32,
+	parameter unsigned ShiftUnit = ShiftUnitSequential
 )
 (
 	input  logic 		clk_i,
@@ -220,37 +222,46 @@ module ristretto_exe_cu #(
 
 	/* #### Shift Unit Protocol #### */
 	
-	logic [1:0] shift_fsm;
 	assign execu_shu_mode_int = execu_control_word_i.exe_shu_shift_en;
 
-	always_ff @(posedge clk_i) begin : shu_protocol
+	if( ShiftUnit == ShiftUnitSequential ) begin
 
-		if( rstn_i == 1'b0 ) begin
-			execu_shu_en_int <= 1'b0;
-			shift_fsm <= '0;
+		logic [1:0] shift_fsm;
+
+		always_ff @(posedge clk_i) begin : shu_protocol
+			if( rstn_i == 1'b0 ) begin
+				execu_shu_en_int <= 1'b0;
+				shift_fsm <= '0;
+			end
+			else if( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 & ~event_shift_ff[1] & ~execu_trap_taken_int[1] ) begin	//Shift latch must be < 0b10, (Exception Condition 2)
+				case(shift_fsm)
+					2'b00: begin
+						if((execu_shu_en_int == 1'b0 | execu_shu_busy_i == 1'b0) &  execu_new_instr_i)begin
+							execu_shu_en_int <= 1'b1;
+							shift_fsm <= 2'b01;
+						end
+					end
+					2'b01: begin 
+						if(execu_shu_busy_i == 1'b1) begin
+							shift_fsm <= 2'b10;
+						end
+					end
+					2'b10: begin
+						if(execu_shu_busy_i == 1'b0) begin
+							execu_shu_en_int <= 1'b0;
+							shift_fsm <= 2'b00;
+						end
+					end
+					default: begin execu_shu_en_int <= 1'b0; shift_fsm <= 2'b00; end
+				endcase
+			end
 		end
-		else if( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 & ~event_shift_ff[1] & ~execu_trap_taken_int[1] ) begin	//Shift latch must be < 0b10, (Exception Condition 2)
-			case(shift_fsm)
-				2'b00: begin
-					if((execu_shu_en_int == 1'b0 | execu_shu_busy_i == 1'b0) &  execu_new_instr_i)begin
-						execu_shu_en_int <= 1'b1;
-						shift_fsm <= 2'b01;
-					end
-				end
-				2'b01: begin 
-					if(execu_shu_busy_i == 1'b1) begin
-						shift_fsm <= 2'b10;
-					end
-				end
-				2'b10: begin
-					if(execu_shu_busy_i == 1'b0) begin
-						execu_shu_en_int <= 1'b0;
-						shift_fsm <= 2'b00;
-					end
-				end
-				default: begin execu_shu_en_int <= 1'b0; shift_fsm <= 2'b00; end
-			endcase
-		end
+
+	end
+	else begin
+			always_comb begin: BarrelShifter_protocol
+				execu_shu_en_int = |execu_shu_mode_int;
+			end
 	end
 
 	/* #### Load & Store Unit Protocol #### */ 
@@ -305,13 +316,20 @@ module ristretto_exe_cu #(
 	logic[1:0] 	event_shift_ff;
 	logic[1:0] 	event_lsu_ff;
 			
-	
+	/* Multi Cycle signal depends on the units in the exe stage. In the future I will support a more general and elegant optional instantiation */
+
+	if( ShiftUnit == ShiftUnitSequential ) begin
+		assign event_mc_op_int = ( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 ) | execu_control_word_i.exe_mem_op_en;
+	end
+	else begin
+		assign event_mc_op_int = execu_control_word_i.exe_mem_op_en;
+	end
+
 	assign event_busy_int = (event_new_instr_ff | (execu_new_instr_i & event_mc_op_int)) & ~event_over_int;
 	assign event_flag_int = ( event_shift_ff == 2'b10 ) | ( event_lsu_ff == 2'b10 );
 	assign event_over_int = ( event_shift_ff == 2'b11 ) | ( event_lsu_ff == 2'b11 );
 
 	assign execu_reg_wr_en_int = event_mc_write_ff | (~event_mc_op_int & execu_new_instr_i & execu_control_word_i.exe_reg_wr_en ) & ~execu_trap_taken_int[1];
-	assign event_mc_op_int = ( execu_shu_mode_int != SHIFT_NONE & execu_shu_size_i >= 2'b10 ) | execu_control_word_i.exe_mem_op_en;
 
 	assign execu_trap_taken_int[1] = execu_trap_detected_i[1] | (event_exception_ff & ~execu_new_instr_i) ; 
 	assign execu_trap_taken_int[0] = ( ( event_interrupt_ff == 2'b01 ) & execu_new_instr_i ) | ( ( event_interrupt_ff == 2'b11 ) & ~execu_new_instr_i );

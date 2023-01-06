@@ -26,7 +26,9 @@ import ristretto_trap_pkg::*;
 module ristretto_top #(
 
 	parameter unsigned DataWidth = 32,
-	parameter unsigned AddrWidth = 32
+	parameter unsigned AddrWidth = 32,
+	parameter unsigned PrefetchBuffer = PrefetchBufferMedium,
+	parameter unsigned ShiftUnit = ShiftUnitBarrel
 
 	)(
 
@@ -162,10 +164,10 @@ module ristretto_top #(
 	logic if_ctrl_hazard_int = (pcu_ctrl_hazard_flag_int[0]) ? (pcu_ctrl_hazard_flag_int[1] | (~pcu_ctrl_hazard_flag_int[1] & exe_branch_taken_int)) : 1'b0;
 	
 	ristretto_if_stage #(
-		.DataWidth	(DataWidth),
-		.PrefetchBuffer	(0),
-		.iTCM		(0),
-		.iCache		(0)
+		.DataWidth		(DataWidth),
+		.PrefetchBuffer	(PrefetchBuffer),
+		.iTCM			(0),
+		.iCache			(0)
 	) if_stage (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
@@ -303,7 +305,9 @@ module ristretto_top #(
 
 	
 	ristretto_exe_stage #(
-		.DataWidth(DataWidth)
+		.DataWidth(DataWidth),
+		.AddrWidth(AddrWidth),
+		.ShiftUnit(ShiftUnit)
 	) exe_stage (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),

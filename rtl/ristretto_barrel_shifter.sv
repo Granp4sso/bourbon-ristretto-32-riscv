@@ -12,11 +12,11 @@
 	
 	******|| INTERFACES 	||******
 
-	-shu_data_i :		Shift Unit Data to be shifted 
-	-shu_amt_i :		Shift Unit shift ammount
-	-shu_mode_i :		Shift unit operation mode (left, right or arithmetic right)
-	-shu_en_i :			Shift Unit Enable, coming from the execution control unit
-	-shu_result_o :		Shift unit shifted data. NB: 0 and 1 bits shifts are combinatorially performed outside the Shift Unit
+	-bshft_data_i :		Shift Unit Data to be shifted 
+	-bshft_amt_i :		Shift Unit shift ammount
+	-bshft_mode_i :		Shift unit operation mode (left, right or arithmetic right)
+	-bshft_en_i :			Shift Unit Enable, coming from the execution control unit
+	-bshft_result_o :		Shift unit shifted data. NB: 0 and 1 bits shifts are combinatorially performed outside the Shift Unit
 
 	******|| REMARKABLE 	||******
 
@@ -37,12 +37,12 @@ module ristretto_barrel_shifter #(
 )
 (
 
-	input logic[DataWidth-1:0] 			shu_data_i,
-	input logic[$clog2(DataWidth)-1:0] 	shu_amt_i,
-	input logic[1:0] 					shu_mode_i,
-	input logic	 						shu_en_i,
+	input logic[DataWidth-1:0] 			bshft_data_i,
+	input logic[$clog2(DataWidth)-1:0] 	bshft_amt_i,
+	input logic[1:0] 					bshft_mode_i,
+	input logic	 						bshft_en_i,
 	
-	output logic[DataWidth-1:0] 		shu_result_o
+	output logic[DataWidth-1:0] 		bshft_result_o
 
 );
 
@@ -52,40 +52,39 @@ module ristretto_barrel_shifter #(
 
     logic [MuxPerStage-1:0] data_mux_r           [NumStages:0];
 	logic [MuxPerStage-1:0] data_mux_l           [NumStages:0];
-	logic [MuxPerStage-1:0]	final_data_r;
-	logic [MuxPerStage-1:0]	final_data_l;
 
 	logic					rshift_val;
 
-    assign data_mux_l[0][DataWidth-1:0] = shu_data_i;
-	assign data_mux_r[0][DataWidth-1:0] = shu_data_i;
-	assign rshift_val = ( shu_mode_i == SHIFT_ARIGHT ) ? shu_data_i[DataWidth-1] : 1'b0; 
+    assign data_mux_l[0][DataWidth-1:0] = bshft_data_i;
+	assign data_mux_r[0][DataWidth-1:0] = bshft_data_i;
+	assign rshift_val = ( bshft_mode_i == SHIFT_ARIGHT ) ? bshft_data_i[DataWidth-1] : 1'b0; 
 
     for ( genvar i = 1; i <= NumStages; i++ ) begin
 
         for ( genvar j = 0; j < MuxPerStage; j++ ) begin
 
 			// Left Shift
+			
 			if( j < 2**(i-1) ) begin
-				assign 	data_mux_l[i][j] = ( shu_amt_i[i-1] & shu_en_i ) ? 1'b0 : data_mux_l[i-1][j];
+				assign 	data_mux_l[i][j] = ( bshft_amt_i[i-1] & bshft_en_i ) ? 1'b0 : data_mux_l[i-1][j];
 			end
 			else begin
-				assign 	data_mux_l[i][j] = ( shu_amt_i[i-1] & shu_en_i ) ? data_mux_l[i-1][j - 2**(i-1)] : data_mux_l[i-1][j];
+				assign 	data_mux_l[i][j] = ( bshft_amt_i[i-1] & bshft_en_i ) ? data_mux_l[i-1][j - 2**(i-1)] : data_mux_l[i-1][j];
 			end
 
 			// Right Shift
 
 			if( j < 2**(NumStages-i) ) begin
-				assign 	data_mux_r[i][MuxPerStage-j-1] = ( shu_amt_i[NumStages-i] & shu_en_i ) ? rshift_val : data_mux_r[i-1][MuxPerStage-j-1];
+				assign 	data_mux_r[i][MuxPerStage-j-1] = ( bshft_amt_i[NumStages-i] & bshft_en_i ) ? rshift_val : data_mux_r[i-1][MuxPerStage-j-1];
 			end
 			else begin
-				assign 	data_mux_r[i][MuxPerStage-j-1] = ( shu_amt_i[NumStages-i] & shu_en_i ) ? data_mux_r[i-1][MuxPerStage-j-1+2**(NumStages-i)] : data_mux_r[i-1][MuxPerStage-j-1];
+				assign 	data_mux_r[i][MuxPerStage-j-1] = ( bshft_amt_i[NumStages-i] & bshft_en_i ) ? data_mux_r[i-1][MuxPerStage-j-1+2**(NumStages-i)] : data_mux_r[i-1][MuxPerStage-j-1];
 			end
 
 		end
     end
 
-	assign shu_result_o = ( shu_mode_i[1] ) ? data_mux_r[NumStages] : data_mux_l[NumStages];
+	assign bshft_result_o = ( bshft_mode_i[1] ) ? data_mux_r[NumStages] : data_mux_l[NumStages];
 	/* verilator lint_on UNOPTFLAT */ 
 
 endmodule;

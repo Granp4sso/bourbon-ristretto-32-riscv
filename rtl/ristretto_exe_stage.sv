@@ -1,27 +1,27 @@
 `include "pkg/ristretto_exe_stage_pkg.sv"
 
 /*
-	Execution Stage v0.9 02/01/2023
+	Execution Stage v1.0 06/01/2023
 
 	******|| INSTANTIABLES 	||******
-						- CodeType,	Mandatory,	Supported
-		-Execution Control Unit 	- [UNIT		Y		Y	]
-		-Trap Control Unit 		- [UNIT		Y		Y	]
-		-Control & Status Regfile	- [UNIT		Y		Y	]
-		-Branch & Jump Unit		- [UNIT		Y		Y	]
-		-Load & Store Unit		- [UNIT		Y		Y	]
-		-Multicycle Shift Unit		- [UNIT		Y		Y	]
-		-Singlecycle Shift Unit		- [UNIT		N		N	]
-		-Multicycle Multiplier		- [UNIT		N		N	]	(M - extension required)
-		-Singlecycle Multiplier		- [UNIT		N		N	]	(M - extension required)
-		-Next PC Multiplexer		- [PROCESS	Y		Y	]
-		-Result Multiplexer		- [PROCESS	Y		Y	]
+									- CodeType,	Mandatory,	Supported
+		-Execution Control Unit 	- [UNIT		Y			Y	]
+		-Trap Control Unit 			- [UNIT		Y			Y	]
+		-Control & Status Regfile	- [UNIT		Y			Y	]
+		-Branch & Jump Unit			- [UNIT		Y			Y	]
+		-Load & Store Unit			- [UNIT		Y			Y	]
+		-Shift Unit					- [UNIT		Y			Y	]
+		-Multicycle Multiplier		- [UNIT		N			N	]	(M - extension required)
+		-Singlecycle Multiplier		- [UNIT		N			N	]	(M - extension required)
+		-Next PC Multiplexer		- [PROCESS	Y			Y	]
+		-Result Multiplexer			- [PROCESS	Y			Y	]
 		
 	******|| PARAMETERS 	||******
 
 	-DataWidth :		Width of data lines
 	-AddrWidth :		Width of addresses
-	
+	-ShiftUnit : 		ShiftUnitSequential or ShiftUnitBarrel
+
 	******|| INTERFACES 	||******
 
 	-clk_i and rstn_i are used to drive the clock signal and the reset one respectively.
@@ -85,7 +85,8 @@ import ristretto_trap_pkg::*;
 
 module ristretto_exe_stage #(
 	parameter unsigned DataWidth = 32,
-	parameter unsigned AddrWidth = 32
+	parameter unsigned AddrWidth = 32,
+	parameter unsigned ShiftUnit = ShiftUnitSequential
 )
 (
 	input logic 			clk_i,
@@ -213,7 +214,14 @@ module ristretto_exe_stage #(
 
 	logic	exe_stage_busy_int;
 
-	ristretto_exe_cu exe_cu(
+	ristretto_exe_cu #(
+
+		.DataWidth		(DataWidth),
+		.AddrWidth		(AddrWidth),
+		.ShiftUnit		(ShiftUnit)
+
+	) exe_cu(
+
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
 	
@@ -279,17 +287,22 @@ module ristretto_exe_stage #(
 
 	logic [DataWidth-1:0] shu_result_int;
 
-	ristretto_shift_unit shu(
-		.clk_i(clk_i),
-		.rstn_i(rstn_i),
+	ristretto_shift_unit #(
+		.DataWidth		(DataWidth),
+		.AddrWidth		(AddrWidth),
+		.ShiftUnit		(ShiftUnit)
+	)
+	shu(
+		.clk_i			(clk_i),
+		.rstn_i			(rstn_i),
 
 		.shu_operand_a_i(exe_operand_a_i),
 		.shu_operand_b_i(exe_operand_b_i[4:0]),
-		.shu_mode_i(shu_mode_int),
-		.shu_en_i(shu_en_int),
+		.shu_mode_i		(shu_mode_int),
+		.shu_en_i		(shu_en_int),
 
-		.shu_busy_o(shu_busy_int),
-		.shu_result_o(shu_result_int)
+		.shu_busy_o		(shu_busy_int),
+		.shu_result_o	(shu_result_int)
 
 	);
 
