@@ -11,6 +11,13 @@ import ristretto_trap_pkg::*;
 
 export *::*;
 
+// Instantiation Parameters
+
+	parameter unsigned ShiftUnitSequential = 	0;
+	parameter unsigned ShiftUnitBarrel = 		1;
+
+// Types
+
 typedef struct packed {
 	//Control signals coming from the decode unit and handled by the execution stage control domain
 	
