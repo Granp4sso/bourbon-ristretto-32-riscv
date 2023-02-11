@@ -2,9 +2,14 @@
 
 /*
 
-	Control & Status Registers Regfile v0.3 30/09/2022
+	Control & Status Registers Regfile v0.4 11/02/2023
 
 	******|| INSTANTIABLES 	||******
+
+	Not all register files are mandatory. mstatus and interrupts registers surely are. But for instance, PMP regs are not.
+
+									- CodeType,	Mandatory,	Supported
+		-PMP CSRs					- [PROCESS	N			N	]
 
 	******|| PARAMETERS 	||******
 
@@ -40,6 +45,8 @@
 		
 	-csr_read_proc :
 		If a read operation has been required, which is always the case for CSR opcodes, it returns the data placed at csr_addr_i.
+
+	WORKING ON PMP SUPPORT
 		
 	******|| NOTES		||******
 
@@ -64,48 +71,55 @@
 module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 		
 		parameter unsigned DataWidth = 32,
-		parameter unsigned AddrWidth = 32
+		parameter unsigned AddrWidth = 32,
+		parameter unsigned PMPenable = PMP_EN_TRUE,
+		parameter unsigned PMPentries = 16
 	
 	)(
 
-		input logic 			clk_i,
-		input logic			rstn_i,
+		input logic 					clk_i,
+		input logic						rstn_i,
 		
 		/* CSRs opcode interface */
 		
-		input logic[11:0] 		csr_addr_i,
-		input logic[DataWidth-1:0]	csr_wdata_i,
-		input logic[2:0]		csr_op_i,
-		input logic	 		csr_en_i, 
+		input logic[11:0] 				csr_addr_i,
+		input logic[DataWidth-1:0]		csr_wdata_i,
+		input logic[2:0]				csr_op_i,
+		input logic	 					csr_en_i, 
 		
-		output logic[DataWidth-1:0]	csr_rdata_o,
+		output logic[DataWidth-1:0]		csr_rdata_o,
 		
 		/* Input signals for Trap Handling */
 		
-		
-		input logic[1:0]		csr_priv_lvl_i,
+		input logic[1:0]				csr_priv_lvl_i,
 		input logic [DataWidth-1:0] 	csr_mtval_i,
 		input logic [DataWidth-1:0] 	csr_mcause_i,
 		input logic [AddrWidth-1:0] 	csr_mepc_i,
-		input logic			csr_sw_int_pend_i,
-		input logic  			csr_tim_int_pend_i,			
-		input logic   			csr_ext_int_pend_i,
-		input logic [2:0]		csr_trap_state_i,	//MIE,MPIE,MPP
+		input logic						csr_sw_int_pend_i,
+		input logic  					csr_tim_int_pend_i,			
+		input logic   					csr_ext_int_pend_i,
+		input logic [2:0]				csr_trap_state_i,	//MIE,MPIE,MPP
 
-		input logic			tcu_csr_we_i,
+		input logic						tcu_csr_we_i,
 		output logic [AddrWidth-1:0] 	csr_mepc_o,
+
+		/* Output signals for PMP */
+
+		/* verilator lint_off	 UNDRIVEN */
+		output logic [DataWidth-1:0] 	csr_pmpcfg_o[PMPentries/4],
+		output logic [AddrWidth-1:0]	csr_pmpaddr_o[PMPentries],
+		/* verilator lint_on UNDRIVEN */
 		
 		/* List of CSRs output signals */
 		
 		output csr_ctrl_t		csr_control_o
 	);
 	
-	
 	logic [DataWidth-1:0]		csr_rdata_int;
 
 	logic [DataWidth-1:0]		csr_mconfigptr_int;
 	logic [MSTATUS_WIDTH-1:0]	csr_mstatus_int;
-	logic 				csr_mstatush_int;
+	logic 						csr_mstatush_int;
 	logic [MIP_WIDTH-1:0]		csr_mip_int;
 	logic [MIE_WIDTH-1:0]		csr_mie_int;
 	logic [AddrWidth-1:0]		csr_mepc_int;
@@ -134,6 +148,7 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 			csr_mtvec_int		<= MTVEC_BASE | MTVEC_MODE_V;
 			csr_mtval_int		<= '0;
 			csr_mconfigptr_int	<= '0;
+
 		end
 		else if( tcu_csr_we_i ) begin				/* A trap has been captured */
 			csr_mtval_int <= csr_mtval_i;
@@ -306,6 +321,122 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 		end
 	end
 
+	/* PMP Optional Section */
+
+	/* verilator lint_off UNDRIVEN */
+	/* verilator lint_off UNSIGNED */
+	if(PMPenable == PMP_EN_TRUE) begin
+
+		logic [DataWidth-1:0]	csr_pmpcfg_int[PMPentries/4];
+		logic [AddrWidth-1:0]	csr_pmpaddr_int[PMPentries];
+
+		for(genvar i = 0; i < PMPentries; i++) begin
+
+		/*logic [DataWidth-1:0]	csr_pmpcfg_int[PMPentries/4];
+		logic [AddrWidth-1:0]	csr_pmpaddr_int[PMPentries];
+
+		always_ff @(posedge clk_i) begin : pmp_edit_proc
+
+			if( rstn_i == 1'b0 ) begin
+				for(int i = 0; i < PMPentries; i++) csr_pmpaddr_int[i] <= '0;
+				for(int i = 0; i < PMPentries/4; i++) csr_pmpcfg_int[i] <= '0;
+			end
+			else if( csr_en_i & ( csr_op_i[0] | csr_op_i[1] ) ) begin
+
+				// PMP Config Registers Edits
+				for(int i = 0; i < PMPentries/4; i++) begin
+					if( csr_addr_i == PMPCFG0 + i[11:0] ) begin //0x3A0 + i
+						if( csr_op_i[0] & csr_op_i[1] ) begin 	//WRITE
+							csr_pmpcfg_int[i] <= csr_wdata_i;
+						end
+						else if( csr_op_i[0] ) begin		//SET
+							csr_pmpcfg_int[i] <= csr_pmpcfg_int[i] | csr_wdata_i;  
+						end
+						else if( csr_op_i[1] ) begin		//RESET
+							csr_pmpcfg_int[i] <= csr_pmpcfg_int[i] & ~csr_wdata_i;  
+						end
+					end
+				end
+
+				// PMP Address Registers Edits
+				for(int i = 0; i < PMPentries; i++) begin
+					if( csr_addr_i == PMPADDR0 + i[11:0] ) begin //0x3B0 + i
+						if( csr_op_i[0] & csr_op_i[1] ) begin 	//WRITE
+							csr_pmpaddr_int[i] <= csr_wdata_i;
+						end
+						else if( csr_op_i[0] ) begin		//SET
+							csr_pmpaddr_int[i] <= csr_pmpaddr_int[i] | csr_wdata_i;  
+						end
+						else if( csr_op_i[1] ) begin		//RESET
+							csr_pmpaddr_int[i] <= csr_pmpaddr_int[i] & ~csr_wdata_i;  
+						end
+					end
+				end
+		
+			end
+		end*/
+
+		
+			always_ff @(posedge clk_i) begin : pmp_edit_proc
+				if( rstn_i == 1'b0 ) begin
+					csr_pmpaddr_int[i] <= '0;
+					csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}] <= '0;
+				end
+				else if( csr_en_i & ( csr_op_i[0] | csr_op_i[1] ) ) begin
+
+					if( csr_addr_i == PMPCFG0 + i ) begin //0x3A0 + i
+						if( csr_op_i[0] & csr_op_i[1] ) begin 	//WRITE
+							csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}] <= csr_wdata_i;
+						end
+						else if( csr_op_i[0] ) begin		//SET
+							csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}] <= csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}] | csr_wdata_i;  
+						end
+						else if( csr_op_i[1] ) begin		//RESET
+							csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}] <= csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}] & ~csr_wdata_i;  
+						end
+					end
+					else if( csr_addr_i == PMPADDR0 + i ) begin //0x3B0 + i
+						if( csr_op_i[0] & csr_op_i[1] ) begin 	//WRITE
+							csr_pmpaddr_int[i] <= csr_wdata_i;
+						end
+						else if( csr_op_i[0] ) begin		//SET
+							csr_pmpaddr_int[i] <= csr_pmpaddr_int[i] | csr_wdata_i;  
+						end
+						else if( csr_op_i[1] ) begin		//RESET
+							csr_pmpaddr_int[i] <= csr_pmpaddr_int[i] & ~csr_wdata_i;  
+						end
+					end
+
+				end
+			end
+		
+			assign csr_pmpaddr_o[i] = csr_pmpaddr_int[i];
+			assign csr_pmpcfg_o[{2'b00,i[DataWidth-1:2]}] = csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}];
+
+		/*always_comb begin : pmp_read_proc 
+		if( csr_en_i & csr_op_i[CSR_OP_R_BIT] ) begin
+			for(int i = 0; i < PMPentries/4; i++) csr_rdata_int = ()
+		end*/
+
+		/*for(genvar i = 0; i < PMPentries; i++)  	assign csr_pmpaddr_o[i] = csr_pmpaddr_int[i];
+		for(genvar i = 0; i < PMPentries/4; i++)  	assign csr_pmpcfg_o[i] = csr_pmpcfg_int[i];*/
+
+		end
+	end else begin
+
+			/*for(genvar i = 0; i < PMPentries; i++)  	assign csr_pmpaddr_o[i] = '0;
+			for(genvar i = 0; i < PMPentries/4; i++)  	assign csr_pmpcfg_o[i] = '0;*/
+			for(genvar i = 0; i < PMPentries; i++) begin
+				assign csr_pmpaddr_o[i] = '0;
+				assign csr_pmpcfg_o[{2'b00,i[DataWidth-1:2]}] = '0;
+			end
+
+	end
+
+
+	/* verilator lint_on UNSIGNED */
+	/* verilator lint_on UNDRIVEN */
+
 
 	/* Assigning outputs */
 	
@@ -325,6 +456,8 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 	assign csr_control_o.mcause = csr_mcause_int;
 	assign csr_control_o.mtval = csr_mtval_int;
 	assign csr_mepc_o = csr_mepc_int;
+
+
 	
 
 endmodule;
