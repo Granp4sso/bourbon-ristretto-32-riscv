@@ -3,6 +3,12 @@
 
 package ristretto_csr_pkg;
 
+/* CSR interface parameters */
+
+parameter integer unsigned PMP_EN_FALSE = 1;
+parameter integer unsigned PMP_EN_TRUE = 1;
+parameter integer unsigned ePMP_EN_TRUE = 2;
+
 parameter logic[1:0] CSR_RW_00 = 2'b00;
 parameter logic[1:0] CSR_RW_01 = 2'b01;
 parameter logic[1:0] CSR_RW_10 = 2'b10;
@@ -148,18 +154,18 @@ parameter logic[11:0] MSTATUS =		12'h300;										//Partially Supported
 parameter logic[11:0] MISA =		12'h301;										//Partially Supported
 parameter logic[11:0] MEDELEG =		12'h302;										//Not Required
 parameter logic[11:0] MIDELEG =		12'h303;										//Not Required
-parameter logic[11:0] MIE	 =	12'h304;										//Partially Supported
-parameter logic[11:0] MTVEC	 =	12'h305;										//Partially Supported
+parameter logic[11:0] MIE	 =	12'h304;											//Partially Supported
+parameter logic[11:0] MTVEC	 =	12'h305;											//Partially Supported
 parameter logic[11:0] MCOUNTEREN =	12'h306;										//Not Supported
 parameter logic[11:0] MSTATUSH =	12'h310;										//Partially Supported
 	
 /* Machine Trap Handling */
 	
 parameter logic[11:0] MSCRATCH =	12'h340;										//Not Supported
-parameter logic[11:0] MEPC	 =	12'h341;										//Partially Supported
+parameter logic[11:0] MEPC	 =		12'h341;										//Partially Supported
 parameter logic[11:0] MCAUSE	 =	12'h342;										//Partially Supported
-parameter logic[11:0] MTVAL	 =	12'h343;										//Partially Supported
-parameter logic[11:0] MIP	 =	12'h344;										//Partially Supported
+parameter logic[11:0] MTVAL	 =		12'h343;										//Partially Supported
+parameter logic[11:0] MIP	 =		12'h344;										//Partially Supported
 parameter logic[11:0] MTINST	 =	12'h34a;										//Not Supported
 parameter logic[11:0] MTVAL2 	 =	12'h34b;										//Not Supported
 	
