@@ -177,6 +177,13 @@ parameter logic[11:0] MSECCFG	 =	12'h747;										//Not Supported
 parameter logic[11:0] MSECCFGH =	12'h757;										//Not Supported
 	
 /* Machine Memory Protection */
+
+parameter logic[11:0] PMPCFGX   = 12'h3a?;
+parameter logic[11:0] PMPADDR0X = 12'h3b?;
+parameter logic[11:0] PMPADDR1X = 12'h3c?;
+parameter logic[11:0] PMPADDR2X = 12'h3d?;
+parameter logic[11:0] PMPADDR3X = 12'h3e?;
+
 	
 parameter logic[11:0] PMPCFG0   = 12'h3a0; parameter logic[11:0] PMPCFG1   = 12'h3a1; parameter logic[11:0] PMPCFG2   = 12'h3a2; parameter logic[11:0] PMPCFG3   = 12'h3a3;	//Not Supported
 parameter logic[11:0] PMPCFG4   = 12'h3a4; parameter logic[11:0] PMPCFG5   = 12'h3a5; parameter logic[11:0] PMPCFG6   = 12'h3a6; parameter logic[11:0] PMPCFG7   = 12'h3a7;	//Not Supported
