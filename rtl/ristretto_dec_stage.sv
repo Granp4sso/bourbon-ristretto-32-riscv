@@ -7,13 +7,13 @@
 
 	The instruction fetch stage is the first stage in the pipe. It can support the following units:
 
-						- CodeType,	Mandatory,	Supported
-		-Instruction Decoder	 	- [UNIT		Y		Y	]
-		-Compressed Decoder	 	- [UNIT		N		N	]
-		-Control Signal uROM 		- [UNIT		Y		Y	]
-		-Regfile			- [UNIT		Y		Y	]
-		-Operand A MUX			- [PROCESS	Y		Y	]
-		-Operand B MUX			- [PROCESS	Y		Y	]
+									- CodeType,	Mandatory,	Supported
+		-Instruction Decoder	 	- [UNIT		Y			Y	]
+		-Compressed Decoder	 		- [UNIT		N			N	]
+		-Control Signal uROM 		- [UNIT		Y			Y	]
+		-Regfile					- [UNIT		Y			Y	]
+		-Operand A MUX				- [PROCESS	Y			Y	]
+		-Operand B MUX				- [PROCESS	Y			Y	]
 
 	******|| PARAMETERS 	||******
 
@@ -140,16 +140,9 @@ module ristretto_dec_stage #(
 	logic			rd_wr_en_int;
 	logic 			new_instruction_latch;
 	logic 			dec_new_instr_int;	
+	logic			csr_noread_int;
 	
 	dec_control_word_t 	control_word_int;
-
-	assign dec_offset12_o = imm12_int;
-	assign dec_offset20_o = imm20_int;
-	assign dec_rd_addr_o = rd_addr_int;
-	assign dec_control_word_o = control_word_int;
-	assign dec_operand_a_o = ( dec_forward_en_i & dec_forward_src_i[0] ) ? dec_rd_wdata_i : operand_a_int ;
-	assign dec_operand_b_o = ( dec_forward_en_i & dec_forward_src_i[1] ) ? dec_rd_wdata_i : operand_b_int ;
-	assign dec_shadow_op_b_o = operand_b_int[4:0] ;
 	
 	/*For the moment the decode stage is purely combinatorial, hence the unit is busy when a new instruction is decoded (1 clk cycle)*/
 
@@ -223,6 +216,10 @@ module ristretto_dec_stage #(
 		.urom_control_word_o(control_word_int)
 	);
 
+	//Perform no csr read if the src is reg x0
+	assign csr_noread_int = (|rs1_addr_int) ? 1'b0 : 1'b1;
+
+
 	//Multiplexer for operand A selection
 
 	always_comb begin : Mux_exe_stage_opA_selection
@@ -260,6 +257,15 @@ module ristretto_dec_stage #(
 	assign dec_rsrc2_addr_o = rs2_addr_int;
 	assign dec_invalid_instr_o = invalid_instr_int;
 	assign dec_invalid_instrval_o = dec_instr_i;
+
+	assign dec_offset12_o = imm12_int;
+	assign dec_offset20_o = imm20_int;
+	assign dec_rd_addr_o = rd_addr_int;
+	assign dec_control_word_o = control_word_int;
+	assign dec_control_word_o.exe_csr_op[1:0] = ( csr_noread_int ) ? 2'b00 : control_word_int.exe_csr_op[1:0] & 2'b11;
+	assign dec_operand_a_o = ( dec_forward_en_i & dec_forward_src_i[0] ) ? dec_rd_wdata_i : operand_a_int ;
+	assign dec_operand_b_o = ( dec_forward_en_i & dec_forward_src_i[1] ) ? dec_rd_wdata_i : operand_b_int ;
+	assign dec_shadow_op_b_o = operand_b_int[4:0] ;
 
 
 endmodule;

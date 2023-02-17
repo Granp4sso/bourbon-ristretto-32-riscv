@@ -421,10 +421,18 @@ module ristretto_exe_stage #(
 	
 	logic [DataWidth-1:0]	csr_mcause_int = {tcu_mcause_int[4],27'h0000000,tcu_mcause_int[3:0]};
 	
-	ristretto_csr_regfile csr_reg (
+	ristretto_csr_regfile #(
+
+		.DataWidth(DataWidth),
+		.AddrWidth(AddrWidth),
+		.PMPenable(PMP_EN_TRUE),
+		.PMPentries(4)
+
+	)csr_reg(
+
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),
-		.csr_addr_i(exe_operand_b_i[11:0]),
+		.csr_addr_i(exe_offset12_i),//exe_operand_b_i[11:0]),
 		.csr_wdata_i(exe_operand_a_i),
 		.csr_op_i(csr_op_int),
 		.csr_en_i(csr_en_int), 
@@ -439,6 +447,8 @@ module ristretto_exe_stage #(
 		.tcu_csr_we_i( mepcv_csr_we ),					//Only 1 TCU write x instr
 		.csr_mepc_o(csr_mepc_int),
 		.csr_priv_lvl_i(priv_lvl_int),					//Fixed at Machine Level atm
+		.csr_pmpcfg_o(),
+		.csr_pmpaddr_o(),
 		.csr_control_o(tcu_csr_control_int)	
 	);
 	

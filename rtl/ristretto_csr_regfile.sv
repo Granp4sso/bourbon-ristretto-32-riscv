@@ -126,6 +126,8 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 	logic [DataWidth-1:0]		csr_mcause_int;
 	logic [DataWidth-1:0]		csr_mtval_int;
 	logic [DataWidth-1:0]		csr_mtvec_int;
+
+	logic [DataWidth-1:0]		csr_pmprdata_int;
 	
 	/* CSR Processes */
 	
@@ -311,6 +313,13 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 											csr_mip_int[MIE_MSI_BIT],3'h0 
 										 };	
 							  end
+				/*PMP*/   PMPCFG0, PMPCFG1, PMPCFG2, PMPCFG3, PMPCFG4, PMPCFG5, PMPCFG6, PMPCFG7, PMPCFG8, PMPCFG9, PMPCFG10, PMPCFG11, PMPCFG12, PMPCFG13, PMPCFG14, PMPCFG15,  
+						  PMPADDR0, PMPADDR1, PMPADDR2, PMPADDR3, PMPADDR4, PMPADDR5, PMPADDR6, PMPADDR7, PMPADDR8, PMPADDR9, PMPADDR10, PMPADDR11, PMPADDR12, PMPADDR13, PMPADDR14, PMPADDR15,
+						  PMPADDR16, PMPADDR17, PMPADDR18, PMPADDR19, PMPADDR20, PMPADDR21, PMPADDR22, PMPADDR23, PMPADDR24, PMPADDR25, PMPADDR26, PMPADDR27, PMPADDR28, PMPADDR29, PMPADDR30, PMPADDR31,
+						  PMPADDR32, PMPADDR33, PMPADDR34, PMPADDR35, PMPADDR36, PMPADDR37, PMPADDR38, PMPADDR39, PMPADDR40, PMPADDR41, PMPADDR42, PMPADDR43, PMPADDR44, PMPADDR45, PMPADDR46, PMPADDR47,
+						  PMPADDR48, PMPADDR49, PMPADDR50, PMPADDR51, PMPADDR52, PMPADDR53, PMPADDR54, PMPADDR55, PMPADDR56, PMPADDR57, PMPADDR58, PMPADDR59, PMPADDR60, PMPADDR61, PMPADDR62, PMPADDR63 :
+							begin csr_rdata_int = csr_pmprdata_int; end
+
 					  default	: begin csr_rdata_int = '0; end
 			
 			endcase
@@ -331,51 +340,6 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 		logic [AddrWidth-1:0]	csr_pmpaddr_int[PMPentries];
 
 		for(genvar i = 0; i < PMPentries; i++) begin
-
-		/*logic [DataWidth-1:0]	csr_pmpcfg_int[PMPentries/4];
-		logic [AddrWidth-1:0]	csr_pmpaddr_int[PMPentries];
-
-		always_ff @(posedge clk_i) begin : pmp_edit_proc
-
-			if( rstn_i == 1'b0 ) begin
-				for(int i = 0; i < PMPentries; i++) csr_pmpaddr_int[i] <= '0;
-				for(int i = 0; i < PMPentries/4; i++) csr_pmpcfg_int[i] <= '0;
-			end
-			else if( csr_en_i & ( csr_op_i[0] | csr_op_i[1] ) ) begin
-
-				// PMP Config Registers Edits
-				for(int i = 0; i < PMPentries/4; i++) begin
-					if( csr_addr_i == PMPCFG0 + i[11:0] ) begin //0x3A0 + i
-						if( csr_op_i[0] & csr_op_i[1] ) begin 	//WRITE
-							csr_pmpcfg_int[i] <= csr_wdata_i;
-						end
-						else if( csr_op_i[0] ) begin		//SET
-							csr_pmpcfg_int[i] <= csr_pmpcfg_int[i] | csr_wdata_i;  
-						end
-						else if( csr_op_i[1] ) begin		//RESET
-							csr_pmpcfg_int[i] <= csr_pmpcfg_int[i] & ~csr_wdata_i;  
-						end
-					end
-				end
-
-				// PMP Address Registers Edits
-				for(int i = 0; i < PMPentries; i++) begin
-					if( csr_addr_i == PMPADDR0 + i[11:0] ) begin //0x3B0 + i
-						if( csr_op_i[0] & csr_op_i[1] ) begin 	//WRITE
-							csr_pmpaddr_int[i] <= csr_wdata_i;
-						end
-						else if( csr_op_i[0] ) begin		//SET
-							csr_pmpaddr_int[i] <= csr_pmpaddr_int[i] | csr_wdata_i;  
-						end
-						else if( csr_op_i[1] ) begin		//RESET
-							csr_pmpaddr_int[i] <= csr_pmpaddr_int[i] & ~csr_wdata_i;  
-						end
-					end
-				end
-		
-			end
-		end*/
-
 		
 			always_ff @(posedge clk_i) begin : pmp_edit_proc
 				if( rstn_i == 1'b0 ) begin
@@ -384,7 +348,7 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 				end
 				else if( csr_en_i & ( csr_op_i[0] | csr_op_i[1] ) ) begin
 
-					if( csr_addr_i == PMPCFG0 + i ) begin //0x3A0 + i
+					if( csr_addr_i == (PMPCFG0 + i[11:0]) ) begin //0x3A0 + i
 						if( csr_op_i[0] & csr_op_i[1] ) begin 	//WRITE
 							csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}] <= csr_wdata_i;
 						end
@@ -395,7 +359,7 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 							csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}] <= csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}] & ~csr_wdata_i;  
 						end
 					end
-					else if( csr_addr_i == PMPADDR0 + i ) begin //0x3B0 + i
+					else if( csr_addr_i == (PMPADDR0 + i[11:0]) ) begin //0x3B0 + i
 						if( csr_op_i[0] & csr_op_i[1] ) begin 	//WRITE
 							csr_pmpaddr_int[i] <= csr_wdata_i;
 						end
@@ -409,27 +373,31 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 
 				end
 			end
+
+			always_comb begin : pmp_read_proc 
+				if( csr_en_i & csr_op_i[CSR_OP_R_BIT] ) begin
+					if( csr_addr_i == (PMPCFG0 + i[11:0]) ) 		csr_pmprdata_int = csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}];
+					else if( csr_addr_i == (PMPADDR0 + i[11:0]) )	csr_pmprdata_int = csr_pmpaddr_int[i];
+				end
+				else begin 
+					csr_pmprdata_int = '0;
+				end
+			end
 		
 			assign csr_pmpaddr_o[i] = csr_pmpaddr_int[i];
 			assign csr_pmpcfg_o[{2'b00,i[DataWidth-1:2]}] = csr_pmpcfg_int[{2'b00,i[DataWidth-1:2]}];
 
-		/*always_comb begin : pmp_read_proc 
-		if( csr_en_i & csr_op_i[CSR_OP_R_BIT] ) begin
-			for(int i = 0; i < PMPentries/4; i++) csr_rdata_int = ()
-		end*/
-
-		/*for(genvar i = 0; i < PMPentries; i++)  	assign csr_pmpaddr_o[i] = csr_pmpaddr_int[i];
-		for(genvar i = 0; i < PMPentries/4; i++)  	assign csr_pmpcfg_o[i] = csr_pmpcfg_int[i];*/
-
 		end
+
+
 	end else begin
 
-			/*for(genvar i = 0; i < PMPentries; i++)  	assign csr_pmpaddr_o[i] = '0;
-			for(genvar i = 0; i < PMPentries/4; i++)  	assign csr_pmpcfg_o[i] = '0;*/
 			for(genvar i = 0; i < PMPentries; i++) begin
 				assign csr_pmpaddr_o[i] = '0;
 				assign csr_pmpcfg_o[{2'b00,i[DataWidth-1:2]}] = '0;
 			end
+
+			assign csr_pmprdata_int = '0;
 
 	end
 
