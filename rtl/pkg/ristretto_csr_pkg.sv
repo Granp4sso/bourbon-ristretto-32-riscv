@@ -86,6 +86,12 @@ parameter logic[31:0] MTVEC_MODE_D = 32'h00000000;
 parameter logic[31:0] MTVEC_MODE_V = 32'h00000001;
 parameter logic[31:0] MTVEC_BASE =   32'h00000008;		//0x00 is the empty address, while 0x04 is the reset handler
 
+/* PMP Bits and flags */
+
+parameter logic[1:0] PMPCFG_ADDR_NONE = 	2'b00;
+parameter logic[1:0] PMPCFG_ADDR_TOR = 	2'b01;
+parameter logic[1:0] PMPCFG_ADDR_NA4 = 	2'b10;
+parameter logic[1:0] PMPCFG_ADDR_NAPOT = 	2'b11;
 
 typedef struct packed {
 
