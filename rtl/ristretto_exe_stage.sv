@@ -1,4 +1,5 @@
 `include "pkg/ristretto_exe_stage_pkg.sv"
+`include "pkg/ristretto_csr_pkg.sv"
 
 /*
 	Execution Stage v1.0 06/01/2023
@@ -86,7 +87,9 @@ import ristretto_trap_pkg::*;
 module ristretto_exe_stage #(
 	parameter unsigned DataWidth = 32,
 	parameter unsigned AddrWidth = 32,
-	parameter unsigned ShiftUnit = ShiftUnitSequential
+	parameter unsigned ShiftUnit = ShiftUnitSequential,
+	parameter unsigned PMPenable = PMP_EN_TRUE,
+	parameter unsigned PMPentries = 16
 )
 (
 	input logic 			clk_i,
@@ -190,20 +193,23 @@ module ristretto_exe_stage #(
 	// CSR Regfile Signals
 	
 	logic [DataWidth-1:0] 	csr_rdata_int;
-	csr_ctrl_t		tcu_csr_control_int;
+	csr_ctrl_t				tcu_csr_control_int;
 	logic [DataWidth-1:0] 	tcu_mtval_int;
-	logic [4:0] 		tcu_mcause_int;
+	logic [4:0] 			tcu_mcause_int;
 	logic [AddrWidth-1:0] 	tcu_mepc_int;
 	logic [AddrWidth-1:0] 	csr_mepc_int;
-	logic			tcu_sw_int_pend_int;
-	logic  			tcu_tim_int_pend_int;			
-	logic   		tcu_ext_int_pend_int;
-	logic [2:0]		tcu_trap_state_int;
-	logic			tcu_csr_we_int;
+	logic					tcu_sw_int_pend_int;
+	logic  					tcu_tim_int_pend_int;			
+	logic   				tcu_ext_int_pend_int;
+	logic [2:0]				tcu_trap_state_int;
+	logic					tcu_csr_we_int;
 	
 	logic [AddrWidth-1:0]	trap_address_int;
-	logic [1:0]		trap_detected_int;
+	logic [1:0]				trap_detected_int;
 	logic [AddrWidth-1:0] 	pretrap_next_pc_int;
+
+	logic [DataWidth-1:0] 	csr_pmpcfg_int[PMPentries/4];
+	logic [AddrWidth-1:0]	csr_pmpaddr_int[PMPentries];
 	
 	
 	assign incr_pc_int = exe_pc_i + 32'h00000004;
@@ -338,7 +344,8 @@ module ristretto_exe_stage #(
 
 	logic[AddrWidth-1:0]	lsu_addr_int = alu_result_int; 
 	logic[AddrWidth-1:0]	lsu_invalid_addr_int;
-	logic[1:0]		lsu_misalig_op_int;
+	logic[AddrWidth-1:0]	lsu_req_addr_int;
+	logic[1:0]				lsu_misalig_op_int;
 	
 	ristretto_lsu lsu (
 		.clk_i(clk_i),
@@ -359,6 +366,7 @@ module ristretto_exe_stage #(
 		.lsu_wdata_req_o(wdata_req_o),
 		.lsu_misalig_op_o(lsu_misalig_op_int),
 		.lsu_invalid_addr_o(lsu_invalid_addr_int),
+		.lsu_reqaddr_o(lsu_req_addr_int),
 		.lsu_op_size_i(lsu_op_size_int),
 		.lsu_op_i(lsu_op_int),
 		.lsu_op_en_i(lsu_en_int),
@@ -371,8 +379,8 @@ module ristretto_exe_stage #(
 
 	logic [AddrWidth-1:0] 	mepcv_mepc_int;
 	logic [AddrWidth-1:0] 	mepcv_jump_address_reg;
-	logic [1:0]		mepcv_ontrap_type;
-	logic 			mepcv_csr_we;
+	logic [1:0]				mepcv_ontrap_type;
+	logic 					mepcv_csr_we;
 	
 	always_ff @(posedge clk_i) begin : mepc_sequential_machine
 	
@@ -426,7 +434,7 @@ module ristretto_exe_stage #(
 		.DataWidth(DataWidth),
 		.AddrWidth(AddrWidth),
 		.PMPenable(PMP_EN_TRUE),
-		.PMPentries(4)
+		.PMPentries(PMPentries)
 
 	)csr_reg(
 
@@ -447,10 +455,33 @@ module ristretto_exe_stage #(
 		.tcu_csr_we_i( mepcv_csr_we ),					//Only 1 TCU write x instr
 		.csr_mepc_o(csr_mepc_int),
 		.csr_priv_lvl_i(priv_lvl_int),					//Fixed at Machine Level atm
-		.csr_pmpcfg_o(),
-		.csr_pmpaddr_o(),
+		.csr_pmpcfg_o(csr_pmpcfg_int),
+		.csr_pmpaddr_o(csr_pmpaddr_int),
 		.csr_control_o(tcu_csr_control_int)	
 	);
+
+	///Optional: Instantiating the PMP
+
+	if( PMP_EN_TRUE != 0 ) begin : pmp_genblk
+
+		ristretto_pmp #(
+			.DataWidth(DataWidth),
+			.AddrWidth(AddrWidth),
+			.PMPenable(PMP_EN_TRUE),
+			.PMPentries(PMPentries)
+		)pmp(
+			.pmp_curr_pvm_i(1'b1),		//Hardcoded to Machine Mode atm
+    		.pmp_next_pc_i(pretrap_next_pc_int),
+    		.pmp_data_addr_i(lsu_req_addr_int),
+			.pmp_op_i({exe_control_word_i.exe_mem_op_en, exe_control_word_i.exe_mem_op}),
+			.pmp_pmpcfg_i(csr_pmpcfg_int),
+			.pmp_pmpaddr_i(csr_pmpaddr_int),
+			.pmp_grantx_o(),
+			.pmp_grantw_o(),
+			.pmp_grantr_o()
+		);
+
+	end
 	
 	//Instantiating Trap Control Unit
 

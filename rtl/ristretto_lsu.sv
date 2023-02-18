@@ -93,8 +93,9 @@ module ristretto_lsu #(
 	
 	/*Misaligned Address Exception*/
 	
-	output logic[1:0]		lsu_misalig_op_o,
+	output logic[1:0]				lsu_misalig_op_o,
 	output logic[AddressWidth-1:0]	lsu_invalid_addr_o,
+	output logic[AddressWidth-1:0]	lsu_reqaddr_o,
 
 	/*Exe Control Unit Port*/
 	input  logic[1:0] 		lsu_op_size_i,
@@ -273,5 +274,8 @@ module ristretto_lsu #(
 	assign lsu_busy_o = (( rdmem_state != RDMEM_IDLE ) & lsu_rbusy_int) | (( wdmem_state != WDMEM_IDLE ) & lsu_wbusy_int);
 	assign lsu_result_o = ( wdmem_state == WDMEM_IDLE ) ? lsu_rresult_int : '0;
 	assign lsu_misalig_op_o = lsu_misalig_op_int;
+
+	//Propagate the computed address into the exe stage (e.g. for the PMP to use it)
+	assign lsu_reqaddr_o = ( lsu_op_i == MEM_STORE_OP ) ? woffset_addr_int : lsu_op_addr_i;
 
 endmodule

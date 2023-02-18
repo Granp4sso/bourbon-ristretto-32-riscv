@@ -28,7 +28,9 @@ module ristretto_top #(
 	parameter unsigned DataWidth = 32,
 	parameter unsigned AddrWidth = 32,
 	parameter unsigned PrefetchBuffer = PrefetchBufferMedium,
-	parameter unsigned ShiftUnit = ShiftUnitBarrel
+	parameter unsigned ShiftUnit = ShiftUnitBarrel,
+	parameter unsigned PMPenable = PMP_EN_TRUE,
+	parameter unsigned PMPentries = 4
 
 	)(
 
@@ -307,7 +309,9 @@ module ristretto_top #(
 	ristretto_exe_stage #(
 		.DataWidth(DataWidth),
 		.AddrWidth(AddrWidth),
-		.ShiftUnit(ShiftUnit)
+		.ShiftUnit(ShiftUnit),
+		.PMPenable(PMPenable),
+		.PMPentries(PMPentries)
 	) exe_stage (
 		.clk_i(clk_i),
 		.rstn_i(rstn_i),

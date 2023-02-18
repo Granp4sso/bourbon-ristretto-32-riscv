@@ -334,7 +334,7 @@ module ristretto_csr_regfile import ristretto_csr_pkg::*; #(
 
 	/* verilator lint_off UNDRIVEN */
 	/* verilator lint_off UNSIGNED */
-	if(PMPenable == PMP_EN_TRUE) begin
+	if(PMPenable == PMP_EN_TRUE) begin : csr_pmpreg_genblk
 
 		logic [DataWidth-1:0]	csr_pmpcfg_int[PMPentries/4];
 		logic [AddrWidth-1:0]	csr_pmpaddr_int[PMPentries];
